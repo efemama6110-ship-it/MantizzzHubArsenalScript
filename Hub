@@ -1,0 +1,340 @@
+-- Load the Rayfield library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- Configuration Variables (Combat)
+local aimbotEnabled = false
+local rightClickHeld = false
+local teamCheckEnabled = false
+local fovCheckEnabled = false
+local headshotEnabled = false
+local fovRadiusValue = 100
+local smoothnessValue = 1
+
+-- Configuration Variables (Visuals)
+local espOutlineEnabled = false
+local espBoxEnabled = false
+local espNameEnabled = false
+local espHealthEnabled = false
+
+-- Create the FOV Draw Circle
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Color = Color3.fromRGB(255, 0, 0)
+FOVCircle.Thickness = 1
+FOVCircle.NumSides = 64
+FOVCircle.Radius = fovRadiusValue
+FOVCircle.Filled = false
+FOVCircle.Visible = false
+
+-- ESP Drawing Cache
+local espCache = {}
+
+local function getESP(player)
+    if not espCache[player] then
+        espCache[player] = {
+            Box = Drawing.new("Square"),
+            Name = Drawing.new("Text"),
+            Health = Drawing.new("Text")
+        }
+        
+        espCache[player].Box.Color = Color3.fromRGB(255, 0, 0)
+        espCache[player].Box.Thickness = 1.5
+        espCache[player].Box.Filled = false
+        
+        espCache[player].Name.Color = Color3.fromRGB(255, 255, 255)
+        espCache[player].Name.Size = 16
+        espCache[player].Name.Center = true
+        espCache[player].Name.Outline = true
+        
+        espCache[player].Health.Color = Color3.fromRGB(0, 255, 0)
+        espCache[player].Health.Size = 14
+        espCache[player].Health.Center = true
+        espCache[player].Health.Outline = true
+    end
+    return espCache[player]
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    if espCache[player] then
+        espCache[player].Box:Remove()
+        espCache[player].Name:Remove()
+        espCache[player].Health:Remove()
+        espCache[player] = nil
+    end
+end)
+
+-- Create the Rayfield Window
+local Window = Rayfield:CreateWindow({
+   Name = "MantizzzHub",
+   LoadingTitle = "Loading MantizzzHub...",
+   LoadingSubtitle = "by Mantiqzz",
+   ConfigurationSaving = { Enabled = false },
+   Discord = { Enabled = false },
+   KeySystem = false,
+})
+
+---------------------------------------------------------
+-- COMBAT TAB
+---------------------------------------------------------
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+
+CombatTab:CreateToggle({
+   Name = "Enable Aimbot (Hold Right Click)",
+   CurrentValue = false,
+   Flag = "AimbotToggle", 
+   Callback = function(Value) aimbotEnabled = Value end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Target Headshot (Instead of Body)",
+   CurrentValue = false,
+   Flag = "HeadshotToggle", 
+   Callback = function(Value) headshotEnabled = Value end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Team Check",
+   CurrentValue = false,
+   Flag = "TeamCheckToggle", 
+   Callback = function(Value) teamCheckEnabled = Value end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Use FOV Check",
+   CurrentValue = false,
+   Flag = "FovToggle", 
+   Callback = function(Value) fovCheckEnabled = Value end,
+})
+
+CombatTab:CreateSlider({
+   Name = "FOV Radius",
+   Range = {30, 500},
+   Increment = 5,
+   Suffix = "px",
+   CurrentValue = 100,
+   Flag = "FovSlider",
+   Callback = function(Value) fovRadiusValue = Value end,
+})
+
+CombatTab:CreateSlider({
+   Name = "Aimbot Smoothness",
+   Range = {1, 20},
+   Increment = 1,
+   Suffix = "x",
+   CurrentValue = 1,
+   Flag = "SmoothnessSlider",
+   Callback = function(Value) smoothnessValue = Value end,
+})
+
+---------------------------------------------------------
+-- VISUALS TAB
+---------------------------------------------------------
+local VisualsTab = Window:CreateTab("Visuals", 7059346386)
+
+VisualsTab:CreateToggle({
+   Name = "Enemy Outline ESP (Red)",
+   CurrentValue = false,
+   Flag = "ESPOutlineToggle", 
+   Callback = function(Value) espOutlineEnabled = Value end,
+})
+
+VisualsTab:CreateToggle({
+   Name = "Enemy Box ESP",
+   CurrentValue = false,
+   Flag = "ESPBoxToggle", 
+   Callback = function(Value) espBoxEnabled = Value end,
+})
+
+VisualsTab:CreateToggle({
+   Name = "Show Player Names",
+   CurrentValue = false,
+   Flag = "ESPNameToggle", 
+   Callback = function(Value) espNameEnabled = Value end,
+})
+
+VisualsTab:CreateToggle({
+   Name = "Show Player Health",
+   CurrentValue = false,
+   Flag = "ESPHealthToggle", 
+   Callback = function(Value) espHealthEnabled = Value end,
+})
+
+---------------------------------------------------------
+-- LOGIC & FUNCTIONS
+---------------------------------------------------------
+
+-- Track mouse inputs
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.MouseButton2 then
+        rightClickHeld = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        rightClickHeld = false
+    end
+end)
+
+-- NEW: Target player closest to the center of the screen
+local function getPlayerClosestToCrosshair()
+    local nearestCharacter = nil
+    local shortestScreenDistance = math.huge
+    
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    
+    -- Find the exact center pixel of the screen
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if teamCheckEnabled and player.Team == LocalPlayer.Team then continue end
+            
+            local character = player.Character
+            local targetPartName = headshotEnabled and "Head" or "HumanoidRootPart"
+            local targetPart = character:FindFirstChild(targetPartName)
+            local humanoid = character:FindFirstChild("Humanoid")
+            
+            if targetPart and humanoid and humanoid.Health > 0 then
+                -- Convert the enemy's 3D position to 2D screen coordinates
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                
+                if onScreen then
+                    -- Calculate how many pixels away they are from the center of your screen
+                    local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                    
+                    if fovCheckEnabled then
+                        -- Only target if they are inside the FOV circle AND closest to the crosshair
+                        if screenDistance <= fovRadiusValue and screenDistance < shortestScreenDistance then
+                            shortestScreenDistance = screenDistance
+                            nearestCharacter = character
+                        end
+                    else
+                        -- Target the closest to the crosshair globally across the whole screen
+                        if screenDistance < shortestScreenDistance then
+                            shortestScreenDistance = screenDistance
+                            nearestCharacter = character
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return nearestCharacter
+end
+
+-- Render Stepped Loop
+RunService.RenderStepped:Connect(function()
+    -- Manage FOV Visuals
+    FOVCircle.Radius = fovRadiusValue
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    FOVCircle.Visible = fovCheckEnabled and aimbotEnabled
+
+    -- Manage Aimbot Tracking
+    if aimbotEnabled and rightClickHeld then
+        -- Changed function call to the new cursor-based targeter
+        local target = getPlayerClosestToCrosshair()
+        if target then
+            local targetPartName = headshotEnabled and "Head" or "HumanoidRootPart"
+            local aimPart = target:FindFirstChild(targetPartName)
+            
+            if aimPart then
+                local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, aimPart.Position)
+                local lerpFactor = 1 / smoothnessValue
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, lerpFactor)
+            end
+        end
+    end
+    
+    -- Manage All ESP Updates
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local char = player.Character
+            local esp = getESP(player)
+            
+            local isAlive = char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
+            local isEnemy = not teamCheckEnabled or (teamCheckEnabled and player.Team ~= LocalPlayer.Team)
+            
+            if isAlive and isEnemy then
+                local rootPart = char.HumanoidRootPart
+                local head = char.Head
+                local humanoid = char.Humanoid
+                
+                -- OUTLINE ESP
+                local hl = char:FindFirstChild("ESP_Highlight")
+                if espOutlineEnabled then
+                    if not hl then
+                        hl = Instance.new("Highlight")
+                        hl.Name = "ESP_Highlight"
+                        hl.FillTransparency = 1 
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop 
+                        hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+                        hl.Parent = char
+                    end
+                    hl.Enabled = true
+                else
+                    if hl then hl.Enabled = false end
+                end
+                
+                -- DRAWING API ESP
+                local bottomPos, onScreenBottom = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
+                local topPos, onScreenTop = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1, 0))
+                
+                if onScreenTop or onScreenBottom then
+                    local boxHeight = math.abs(bottomPos.Y - topPos.Y)
+                    local boxWidth = boxHeight * 0.6
+                    
+                    if espBoxEnabled then
+                        esp.Box.Size = Vector2.new(boxWidth, boxHeight)
+                        esp.Box.Position = Vector2.new(topPos.X - boxWidth/2, topPos.Y)
+                        esp.Box.Visible = true
+                    else
+                        esp.Box.Visible = false
+                    end
+                    
+                    if espNameEnabled then
+                        esp.Name.Text = player.Name
+                        esp.Name.Position = Vector2.new(topPos.X, topPos.Y - 20)
+                        esp.Name.Visible = true
+                    else
+                        esp.Name.Visible = false
+                    end
+                    
+                    if espHealthEnabled then
+                        local hp = math.floor(humanoid.Health)
+                        local maxHp = math.floor(humanoid.MaxHealth)
+                        local healthColor = Color3.fromRGB(255 - (hp / maxHp) * 255, (hp / maxHp) * 255, 0)
+                        
+                        esp.Health.Text = tostring(hp) .. " / " .. tostring(maxHp)
+                        esp.Health.Color = healthColor
+                        esp.Health.Position = Vector2.new(topPos.X, bottomPos.Y + 5)
+                        esp.Health.Visible = true
+                    else
+                        esp.Health.Visible = false
+                    end
+                else
+                    esp.Box.Visible = false
+                    esp.Name.Visible = false
+                    esp.Health.Visible = false
+                end
+            else
+                if char then
+                    local hl = char:FindFirstChild("ESP_Highlight")
+                    if hl then hl.Enabled = false end
+                end
+                esp.Box.Visible = false
+                esp.Name.Visible = false
+                esp.Health.Visible = false
+            end
+        end
+    end
+end)

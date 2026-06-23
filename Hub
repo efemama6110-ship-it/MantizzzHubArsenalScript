@@ -403,10 +403,24 @@ function stopFly()
     if bodyVelocity then bodyVelocity:Destroy() end
 end
 
+-- NEW PHYSICS OVERRIDE LOOP (Runs before physics simulation)
 RunService.Stepped:Connect(function()
+    -- Noclip Handling
     if noclipEnabled and LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end
+
+    -- THE FIX: Hard-force CanCollide to false every physics frame to stop floor-sticking
+    if hbeEnabled then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and isOpponent(player) then
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.CanCollide = false
+                end
+            end
         end
     end
 end)
@@ -501,7 +515,7 @@ local function getAbsoluteNearestOpponent()
     return nearestOpponent
 end
 
--- Direct Body/Torso Hitbox Extender (Targets strictly the HumanoidRootPart)
+-- Hitbox Extender Loop (Visuals & Sizing)
 task.spawn(function()
     while task.wait(0.1) do
         for _, player in pairs(Players:GetPlayers()) do
@@ -511,15 +525,10 @@ task.spawn(function()
                 
                 if hrp and hum and hum.Health > 0 then
                     if hbeEnabled and isOpponent(player) then
-                        -- Apply the selected size safely
                         hrp.Size = Vector3.new(hbeSizeValue, hbeSizeValue, hbeSizeValue)
-                        hrp.CanCollide = false
                         hrp.Massless = true
-                        
-                        -- Override physical properties so the density is 0 (weighs absolutely nothing)
                         hrp.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
                         
-                        -- Handle Visibility Logic
                         if hbeVisibleEnabled then
                             hrp.Transparency = 0.5
                             hrp.Material = Enum.Material.ForceField
@@ -528,13 +537,11 @@ task.spawn(function()
                             hrp.Transparency = 1
                         end
                     else
-                        -- Revert instantly if disabled or if they become a teammate
-                        hrp.Size = Vector3.new(2, 2, 1) -- Standard Roblox RootPart scale
+                        -- Revert state
+                        hrp.Size = Vector3.new(2, 2, 1)
                         hrp.Transparency = 1
                         hrp.Material = Enum.Material.Plastic
                         hrp.Color = Color3.fromRGB(163, 162, 165)
-                        
-                        -- Revert physical properties to default Roblox humanoid properties
                         hrp.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5, 1, 1) 
                     end
                 end

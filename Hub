@@ -25,6 +25,17 @@ local espBoxEnabled = false
 local espNameEnabled = false
 local espHealthEnabled = false
 
+-- Configuration Variables (Movement)
+local flyToggleEnabled = false
+local isFlying = false
+local flySpeed = 50
+local speedToggleEnabled = false
+local walkSpeedValue = 16
+
+-- Fly Objects & Controllers
+local bodyGyro, bodyVelocity
+local flyCtrl = {F = 0, B = 0, L = 0, R = 0}
+
 -- Create the FOV Draw Circle
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Color = Color3.fromRGB(255, 0, 0)
@@ -42,22 +53,29 @@ local function getESP(player)
         espCache[player] = {
             Box = Drawing.new("Square"),
             Name = Drawing.new("Text"),
-            Health = Drawing.new("Text")
+            HealthBarBG = Drawing.new("Square"),
+            HealthBar = Drawing.new("Square")
         }
         
+        -- Box
         espCache[player].Box.Color = Color3.fromRGB(255, 0, 0)
         espCache[player].Box.Thickness = 1.5
         espCache[player].Box.Filled = false
         
+        -- Name (Smaller Font)
         espCache[player].Name.Color = Color3.fromRGB(255, 255, 255)
-        espCache[player].Name.Size = 16
+        espCache[player].Name.Size = 13 -- Decreased size
         espCache[player].Name.Center = true
         espCache[player].Name.Outline = true
         
-        espCache[player].Health.Color = Color3.fromRGB(0, 255, 0)
-        espCache[player].Health.Size = 14
-        espCache[player].Health.Center = true
-        espCache[player].Health.Outline = true
+        -- Health Bar Background (Black)
+        espCache[player].HealthBarBG.Color = Color3.fromRGB(0, 0, 0)
+        espCache[player].HealthBarBG.Filled = true
+        espCache[player].HealthBarBG.Thickness = 1
+        
+        -- Health Bar Foreground (Dynamic Color)
+        espCache[player].HealthBar.Filled = true
+        espCache[player].HealthBar.Thickness = 1
     end
     return espCache[player]
 end
@@ -66,7 +84,8 @@ Players.PlayerRemoving:Connect(function(player)
     if espCache[player] then
         espCache[player].Box:Remove()
         espCache[player].Name:Remove()
-        espCache[player].Health:Remove()
+        espCache[player].HealthBarBG:Remove()
+        espCache[player].HealthBar:Remove()
         espCache[player] = nil
     end
 end)
@@ -161,20 +180,113 @@ VisualsTab:CreateToggle({
 })
 
 VisualsTab:CreateToggle({
-   Name = "Show Player Health",
+   Name = "Show Health Bar",
    CurrentValue = false,
    Flag = "ESPHealthToggle", 
    Callback = function(Value) espHealthEnabled = Value end,
 })
 
 ---------------------------------------------------------
+-- MOVEMENT TAB
+---------------------------------------------------------
+local MovementTab = Window:CreateTab("Movement")
+
+MovementTab:CreateToggle({
+   Name = "Enable Fly Keybind (Press 'X')",
+   CurrentValue = false,
+   Flag = "FlyKeybindToggle", 
+   Callback = function(Value) 
+       flyToggleEnabled = Value 
+       -- Disable fly instantly if the main toggle is turned off
+       if not Value and isFlying then
+           isFlying = false
+           if bodyGyro then bodyGyro:Destroy() end
+           if bodyVelocity then bodyVelocity:Destroy() end
+       end
+   end,
+})
+
+MovementTab:CreateSlider({
+   Name = "Fly Speed",
+   Range = {10, 200},
+   Increment = 5,
+   Suffix = "spd",
+   CurrentValue = 50,
+   Flag = "FlySpeedSlider",
+   Callback = function(Value) flySpeed = Value end,
+})
+
+MovementTab:CreateToggle({
+   Name = "Enable Custom WalkSpeed",
+   CurrentValue = false,
+   Flag = "SpeedToggle", 
+   Callback = function(Value) 
+       speedToggleEnabled = Value 
+       if not Value and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+           LocalPlayer.Character.Humanoid.WalkSpeed = 16 -- Reset to default
+       end
+   end,
+})
+
+MovementTab:CreateSlider({
+   Name = "WalkSpeed Slider",
+   Range = {16, 200},
+   Increment = 1,
+   Suffix = "spd",
+   CurrentValue = 16,
+   Flag = "SpeedSlider",
+   Callback = function(Value) walkSpeedValue = Value end,
+})
+
+---------------------------------------------------------
 -- LOGIC & FUNCTIONS
 ---------------------------------------------------------
 
--- Track mouse inputs
+-- Fly Start/Stop Functions
+local function startFly()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = char.HumanoidRootPart
+    bodyGyro = Instance.new("BodyGyro", hrp)
+    bodyGyro.P = 9e4
+    bodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bodyGyro.cframe = hrp.CFrame
+    
+    bodyVelocity = Instance.new("BodyVelocity", hrp)
+    bodyVelocity.velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
+    
+    isFlying = true
+end
+
+local function stopFly()
+    isFlying = false
+    if bodyGyro then bodyGyro:Destroy() end
+    if bodyVelocity then bodyVelocity:Destroy() end
+end
+
+-- If player dies, reset fly to prevent bugs
+LocalPlayer.CharacterAdded:Connect(function()
+    if isFlying then stopFly() end
+end)
+
+-- Input Manager for Aimbot, Fly Toggle, and Fly Movement
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.UserInputType == Enum.UserInputType.MouseButton2 then
-        rightClickHeld = true
+    if not gameProcessed then
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            rightClickHeld = true
+        end
+        
+        if input.KeyCode == Enum.KeyCode.X and flyToggleEnabled then
+            if isFlying then stopFly() else startFly() end
+        end
+        
+        -- Fly directional controls
+        if input.KeyCode == Enum.KeyCode.W then flyCtrl.F = 1 end
+        if input.KeyCode == Enum.KeyCode.S then flyCtrl.B = -1 end
+        if input.KeyCode == Enum.KeyCode.A then flyCtrl.L = -1 end
+        if input.KeyCode == Enum.KeyCode.D then flyCtrl.R = 1 end
     end
 end)
 
@@ -182,16 +294,19 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         rightClickHeld = false
     end
+    
+    if input.KeyCode == Enum.KeyCode.W then flyCtrl.F = 0 end
+    if input.KeyCode == Enum.KeyCode.S then flyCtrl.B = 0 end
+    if input.KeyCode == Enum.KeyCode.A then flyCtrl.L = 0 end
+    if input.KeyCode == Enum.KeyCode.D then flyCtrl.R = 0 end
 end)
 
--- NEW: Target player closest to the center of the screen
+-- Crosshair Target Selection
 local function getPlayerClosestToCrosshair()
     local nearestCharacter = nil
     local shortestScreenDistance = math.huge
     
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
-    
-    -- Find the exact center pixel of the screen
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
     for _, player in pairs(Players:GetPlayers()) do
@@ -204,21 +319,15 @@ local function getPlayerClosestToCrosshair()
             local humanoid = character:FindFirstChild("Humanoid")
             
             if targetPart and humanoid and humanoid.Health > 0 then
-                -- Convert the enemy's 3D position to 2D screen coordinates
                 local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-                
                 if onScreen then
-                    -- Calculate how many pixels away they are from the center of your screen
                     local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                    
                     if fovCheckEnabled then
-                        -- Only target if they are inside the FOV circle AND closest to the crosshair
                         if screenDistance <= fovRadiusValue and screenDistance < shortestScreenDistance then
                             shortestScreenDistance = screenDistance
                             nearestCharacter = character
                         end
                     else
-                        -- Target the closest to the crosshair globally across the whole screen
                         if screenDistance < shortestScreenDistance then
                             shortestScreenDistance = screenDistance
                             nearestCharacter = character
@@ -228,25 +337,42 @@ local function getPlayerClosestToCrosshair()
             end
         end
     end
-    
     return nearestCharacter
 end
 
--- Render Stepped Loop
+-- Render Stepped Loop (Heartbeat of the script)
 RunService.RenderStepped:Connect(function()
-    -- Manage FOV Visuals
+    
+    -- 1. Enforce WalkSpeed
+    if speedToggleEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeedValue
+    end
+    
+    -- 2. Handle Fly Physics
+    if isFlying and bodyVelocity and bodyGyro then
+        local camCF = Camera.CFrame
+        bodyGyro.cframe = camCF
+        
+        local moveDir = Vector3.new(flyCtrl.L + flyCtrl.R, 0, flyCtrl.F + flyCtrl.B)
+        
+        if moveDir.Magnitude > 0 then
+            bodyVelocity.velocity = (camCF.RightVector * (flyCtrl.L + flyCtrl.R) + camCF.LookVector * (flyCtrl.F + flyCtrl.B)) * flySpeed
+        else
+            bodyVelocity.velocity = Vector3.new(0, 0, 0)
+        end
+    end
+
+    -- 3. Manage FOV Visuals
     FOVCircle.Radius = fovRadiusValue
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Visible = fovCheckEnabled and aimbotEnabled
 
-    -- Manage Aimbot Tracking
+    -- 4. Manage Aimbot Tracking
     if aimbotEnabled and rightClickHeld then
-        -- Changed function call to the new cursor-based targeter
         local target = getPlayerClosestToCrosshair()
         if target then
             local targetPartName = headshotEnabled and "Head" or "HumanoidRootPart"
             local aimPart = target:FindFirstChild(targetPartName)
-            
             if aimPart then
                 local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, aimPart.Position)
                 local lerpFactor = 1 / smoothnessValue
@@ -255,7 +381,7 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Manage All ESP Updates
+    -- 5. Manage All ESP Updates
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local char = player.Character
@@ -293,6 +419,7 @@ RunService.RenderStepped:Connect(function()
                     local boxHeight = math.abs(bottomPos.Y - topPos.Y)
                     local boxWidth = boxHeight * 0.6
                     
+                    -- Box ESP
                     if espBoxEnabled then
                         esp.Box.Size = Vector2.new(boxWidth, boxHeight)
                         esp.Box.Position = Vector2.new(topPos.X - boxWidth/2, topPos.Y)
@@ -301,30 +428,41 @@ RunService.RenderStepped:Connect(function()
                         esp.Box.Visible = false
                     end
                     
+                    -- Name ESP
                     if espNameEnabled then
                         esp.Name.Text = player.Name
-                        esp.Name.Position = Vector2.new(topPos.X, topPos.Y - 20)
+                        esp.Name.Position = Vector2.new(topPos.X, topPos.Y - 18)
                         esp.Name.Visible = true
                     else
                         esp.Name.Visible = false
                     end
                     
+                    -- Health Bar ESP
                     if espHealthEnabled then
-                        local hp = math.floor(humanoid.Health)
-                        local maxHp = math.floor(humanoid.MaxHealth)
-                        local healthColor = Color3.fromRGB(255 - (hp / maxHp) * 255, (hp / maxHp) * 255, 0)
+                        local hpFactor = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+                        local barWidth = 3
+                        local barXOffset = topPos.X - (boxWidth / 2) - barWidth - 4
                         
-                        esp.Health.Text = tostring(hp) .. " / " .. tostring(maxHp)
-                        esp.Health.Color = healthColor
-                        esp.Health.Position = Vector2.new(topPos.X, bottomPos.Y + 5)
-                        esp.Health.Visible = true
+                        -- Background (Black)
+                        esp.HealthBarBG.Size = Vector2.new(barWidth, boxHeight)
+                        esp.HealthBarBG.Position = Vector2.new(barXOffset, topPos.Y)
+                        esp.HealthBarBG.Visible = true
+                        
+                        -- Foreground (Fading color)
+                        local currentHpHeight = boxHeight * hpFactor
+                        esp.HealthBar.Color = Color3.fromRGB(255 - (hpFactor * 255), hpFactor * 255, 0)
+                        esp.HealthBar.Size = Vector2.new(barWidth, currentHpHeight)
+                        esp.HealthBar.Position = Vector2.new(barXOffset, topPos.Y + (boxHeight - currentHpHeight))
+                        esp.HealthBar.Visible = true
                     else
-                        esp.Health.Visible = false
+                        esp.HealthBarBG.Visible = false
+                        esp.HealthBar.Visible = false
                     end
                 else
                     esp.Box.Visible = false
                     esp.Name.Visible = false
-                    esp.Health.Visible = false
+                    esp.HealthBarBG.Visible = false
+                    esp.HealthBar.Visible = false
                 end
             else
                 if char then
@@ -333,7 +471,8 @@ RunService.RenderStepped:Connect(function()
                 end
                 esp.Box.Visible = false
                 esp.Name.Visible = false
-                esp.Health.Visible = false
+                esp.HealthBarBG.Visible = false
+                esp.HealthBar.Visible = false
             end
         end
     end

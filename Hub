@@ -16,17 +16,12 @@ local aimbotEnabled = false
 local rightClickHeld = false
 local teamCheckEnabled = true
 local fovCheckEnabled = false
-local headshotEnabled = true -- Defaulted to true for Arsenal
+local headshotEnabled = true
 local triggerbotEnabled = false
 local killAllEnabled = false
 local killAllConfirmed = false
 local fovRadiusValue = 100
 local smoothnessValue = 1
-
--- Configuration Variables (HBE)
-local hbeEnabled = false
-local hbeSizeValue = 15
-local hbeVisibleEnabled = true
 
 -- Configuration Variables (Visuals)
 local espOutlineEnabled = false
@@ -52,7 +47,7 @@ local flyCtrl = {F = 0, B = 0, L = 0, R = 0}
 
 -- Create the FOV Draw Circle
 local FOVCircle = Drawing.new("Circle")
-FOVCircle.Color = Color3.fromRGB(255, 0, 0)
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 FOVCircle.Thickness = 1
 FOVCircle.NumSides = 64
 FOVCircle.Radius = fovRadiusValue
@@ -77,7 +72,6 @@ local function getESP(player)
             T2LL = Drawing.new("Line"), 
             T2RL = Drawing.new("Line")  
         }
-        
         espCache[player].Box.Color = Color3.fromRGB(255, 0, 0)
         espCache[player].Box.Thickness = 1.5
         espCache[player].Box.Filled = false
@@ -90,36 +84,25 @@ local function getESP(player)
             txt.Outline = true
             txt.Font = 2
         end
-        
         espCache[player].Tracer.Color = Color3.fromRGB(255, 0, 0)
         espCache[player].Tracer.Thickness = 1
-        
         espCache[player].HealthBarBG.Color = Color3.fromRGB(0, 0, 0)
         espCache[player].HealthBarBG.Filled = true
         espCache[player].HealthBarBG.Thickness = 1
         espCache[player].HealthBar.Filled = true
         espCache[player].HealthBar.Thickness = 1
-        
-        local skelLines = {espCache[player].H2T, espCache[player].T2L, espCache[player].T2R, espCache[player].T2LL, espCache[player].T2RL}
-        for _, line in pairs(skelLines) do
-            line.Color = Color3.fromRGB(255, 255, 255)
-            line.Thickness = 1.5
-        end
     end
     return espCache[player]
 end
 
 local function cleanPlayerESP(player)
     if espCache[player] then
-        for _, obj in pairs(espCache[player]) do 
-            obj:Remove() 
-        end
+        for _, obj in pairs(espCache[player]) do obj:Remove() end
         espCache[player] = nil
     end
 end
 Players.PlayerRemoving:Connect(cleanPlayerESP)
 
--- Strict opponent verification matrix (Handles Arsenal Teams)
 local function isOpponent(player)
     if player == LocalPlayer then return false end
     if teamCheckEnabled and player.Team and LocalPlayer.Team then
@@ -133,159 +116,44 @@ end
 -- Create the Rayfield Window
 local Window = Rayfield:CreateWindow({
    Name = "MantizzzHub 🚀",
-   LoadingTitle = "Loading MantizzzHub...",
-   LoadingSubtitle = "Arsenal Edition",
+   LoadingTitle = "Loading Full Features...",
+   LoadingSubtitle = "Arsenal Ready",
    ConfigurationSaving = { Enabled = false },
-   Discord = { Enabled = false },
    KeySystem = false,
 })
 
 ---------------------------------------------------------
--- COMBAT TAB
+-- TABS
 ---------------------------------------------------------
 local CombatTab = Window:CreateTab("Combat", 4483362458)
+CombatTab:CreateToggle({Name = "Enable Aimbot (Hold Right Click)", CurrentValue = false, Callback = function(Value) aimbotEnabled = Value end })
+CombatTab:CreateToggle({Name = "Target Headshot", CurrentValue = true, Callback = function(Value) headshotEnabled = Value end })
+CombatTab:CreateToggle({Name = "Triggerbot (Teleport)", CurrentValue = false, Callback = function(Value) triggerbotEnabled = Value end })
+CombatTab:CreateToggle({Name = "Team Check", CurrentValue = true, Callback = function(Value) teamCheckEnabled = Value end })
+CombatTab:CreateSlider({Name = "FOV Radius", Range = {30, 500}, Increment = 5, CurrentValue = 100, Callback = function(Value) fovRadiusValue = Value end })
+CombatTab:CreateSlider({Name = "Smoothness", Range = {1, 20}, Increment = 1, CurrentValue = 1, Callback = function(Value) smoothnessValue = Value end })
 
-CombatTab:CreateToggle({
-   Name = "Enable Aimbot (Hold Right Click)",
-   CurrentValue = false,
-   Flag = "AimbotToggle", 
-   Callback = function(Value) aimbotEnabled = Value end,
- })
-
-CombatTab:CreateToggle({
-   Name = "Target Headshot (Instead of Body)",
-   CurrentValue = true,
-   Flag = "HeadshotToggle", 
-   Callback = function(Value) headshotEnabled = Value end,
-})
-
-CombatTab:CreateToggle({
-   Name = "Triggerbot (Teleport Kill Nearest)",
-   CurrentValue = false,
-   Flag = "TriggerToggle", 
-   Callback = function(Value) triggerbotEnabled = Value end,
-})
-
-CombatTab:CreateToggle({
-   Name = "Team Check (Aimbot/ESP/HBE)",
-   CurrentValue = true,
-   Flag = "TeamCheckToggle", 
-   Callback = function(Value) teamCheckEnabled = Value end,
-})
-
-CombatTab:CreateToggle({
-   Name = "Use FOV Check",
-   CurrentValue = false,
-   Flag = "FovToggle", 
-   Callback = function(Value) fovCheckEnabled = Value end,
-})
-
-CombatTab:CreateSlider({
-   Name = "FOV Radius",
-   Range = {30, 500},
-   Increment = 5,
-   Suffix = "px",
-   CurrentValue = 100,
-   Flag = "FovSlider",
-   Callback = function(Value) fovRadiusValue = Value end,
-})
-
-CombatTab:CreateSlider({
-   Name = "Aimbot Smoothness",
-   Range = {1, 20},
-   Increment = 1,
-   Suffix = "x",
-   CurrentValue = 1,
-   Flag = "SmoothnessSlider",
-   Callback = function(Value) smoothnessValue = Value end,
-})
-
--- Hitbox Extender Section
-CombatTab:CreateSection("Arsenal Hitbox Extender (Head)")
-
-CombatTab:CreateToggle({
-   Name = "Enable Hitbox Extender (Head Only)",
-   CurrentValue = false,
-   Flag = "HBEToggle",
-   Callback = function(Value) hbeEnabled = Value end,
-})
-
-CombatTab:CreateToggle({
-   Name = "Show Hitboxes (Visibility)",
-   CurrentValue = true,
-   Flag = "HBEVisToggle",
-   Callback = function(Value) hbeVisibleEnabled = Value end,
-})
-
-CombatTab:CreateSlider({
-   Name = "Hitbox Size",
-   Range = {2, 50},
-   Increment = 1,
-   Suffix = "studs",
-   CurrentValue = 15,
-   Flag = "HBESlider",
-   Callback = function(Value) hbeSizeValue = Value end,
-})
-
-CombatTab:CreateSection("⚠️ RAGE / BAN RISK")
-
-CombatTab:CreateToggle({
-   Name = "Confirm Kill-All Risk",
-   CurrentValue = false,
-   Flag = "KillConfirm",
-   Callback = function(Value)
-       killAllConfirmed = Value
-       if Value then
-           Rayfield:Notify({
-               Name = "🚨 CRITICAL WARNING",
-               Content = "Arsenal anti-cheat will likely detect Kill-All.",
-               Duration = 4,
-               Image = 4483362458,
-           })
-       end
-   end,
-})
-
-CombatTab:CreateToggle({
-   Name = "Execute Loop Kill-All",
-   CurrentValue = false,
-   Flag = "KillAllLoop", 
-   Callback = function(Value) 
-       if Value and not killAllConfirmed then
-           killAllEnabled = false
-       else
-           killAllEnabled = Value 
-       end
-   end,
-})
-
----------------------------------------------------------
--- VISUALS & MOVEMENT TABS
----------------------------------------------------------
 local VisualsTab = Window:CreateTab("Visuals", 7059346386)
-
-VisualsTab:CreateToggle({ Name = "Enemy Outline ESP", CurrentValue = false, Flag = "ESPOutlineToggle", Callback = function(Value) espOutlineEnabled = Value end })
-VisualsTab:CreateToggle({ Name = "Enemy Box ESP", CurrentValue = false, Flag = "ESPBoxToggle", Callback = function(Value) espBoxEnabled = Value end })
-VisualsTab:CreateToggle({ Name = "Skeleton ESP", CurrentValue = false, Flag = "SkelToggle", Callback = function(Value) espSkeletonEnabled = Value end })
-VisualsTab:CreateToggle({ Name = "Tracers", CurrentValue = false, Flag = "TraceToggle", Callback = function(Value) espTracersEnabled = Value end })
-VisualsTab:CreateToggle({ Name = "Show Names", CurrentValue = false, Flag = "ESPNameToggle", Callback = function(Value) espNameEnabled = Value end })
-VisualsTab:CreateToggle({ Name = "Show Distance", CurrentValue = false, Flag = "ESPDistToggle", Callback = function(Value) espDistanceEnabled = Value end })
-VisualsTab:CreateToggle({ Name = "Show Health Bar", CurrentValue = false, Flag = "ESPHealthToggle", Callback = function(Value) espHealthEnabled = Value end })
+VisualsTab:CreateToggle({Name = "Enemy Outline ESP", CurrentValue = false, Callback = function(Value) espOutlineEnabled = Value end })
+VisualsTab:CreateToggle({Name = "Enemy Box ESP", CurrentValue = false, Callback = function(Value) espBoxEnabled = Value end })
+VisualsTab:CreateToggle({Name = "Skeleton ESP", CurrentValue = false, Callback = function(Value) espSkeletonEnabled = Value end })
+VisualsTab:CreateToggle({Name = "Tracers", CurrentValue = false, Callback = function(Value) espTracersEnabled = Value end })
+VisualsTab:CreateToggle({Name = "Show Names", CurrentValue = false, Callback = function(Value) espNameEnabled = Value end })
+VisualsTab:CreateToggle({Name = "Show Distance", CurrentValue = false, Callback = function(Value) espDistanceEnabled = Value end })
+VisualsTab:CreateToggle({Name = "Show Health Bar", CurrentValue = false, Callback = function(Value) espHealthEnabled = Value end })
 
 local MovementTab = Window:CreateTab("Movement")
-
-MovementTab:CreateToggle({ Name = "Enable Fly (Press 'X')", CurrentValue = false, Flag = "FlyKeybindToggle", Callback = function(Value) flyToggleEnabled = Value if not Value and isFlying then stopFly() end end })
-MovementTab:CreateSlider({ Name = "Fly Speed", Range = {10, 200}, Increment = 5, Suffix = "spd", CurrentValue = 50, Flag = "FlySpeedSlider", Callback = function(Value) flySpeed = Value end })
-MovementTab:CreateToggle({ Name = "Noclip", CurrentValue = false, Flag = "NoclipToggle", Callback = function(Value) noclipEnabled = Value end })
-MovementTab:CreateToggle({ Name = "Infinite Jump", CurrentValue = false, Flag = "InfJumpToggle", Callback = function(Value) infJumpEnabled = Value end })
+MovementTab:CreateToggle({Name = "Enable Fly (Press 'X')", CurrentValue = false, Callback = function(Value) flyToggleEnabled = Value if not Value and isFlying then stopFly() end end })
+MovementTab:CreateSlider({Name = "Fly Speed", Range = {10, 200}, Increment = 5, CurrentValue = 50, Callback = function(Value) flySpeed = Value end })
+MovementTab:CreateToggle({Name = "Noclip", CurrentValue = false, Callback = function(Value) noclipEnabled = Value end })
+MovementTab:CreateToggle({Name = "Infinite Jump", CurrentValue = false, Callback = function(Value) infJumpEnabled = Value end })
 
 ---------------------------------------------------------
--- LOGIC & ENVIRONMENT CONTROLS
+-- LOGIC
 ---------------------------------------------------------
-
 function startFly()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
     bodyGyro = Instance.new("BodyGyro", hrp)
     bodyGyro.P = 9e4
     bodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
@@ -302,31 +170,10 @@ function stopFly()
     if bodyVelocity then bodyVelocity:Destroy() end
 end
 
--- Force collisions off for massive heads
 RunService.Stepped:Connect(function()
     if noclipEnabled and LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = false end
-        end
-    end
-
-    if hbeEnabled then
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character and isOpponent(player) then
-                local head = player.Character:FindFirstChild("Head")
-                if head then head.CanCollide = false end
-            end
-        end
-    end
-end)
-
-UserInputService.JumpRequest:Connect(function()
-    if infJumpEnabled and LocalPlayer.Character then
-        local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hrp and hum then
-            hrp.Velocity = Vector3.new(hrp.Velocity.X, hum.JumpPower > 0 and hum.JumpPower or 50, hrp.Velocity.Z)
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end
 end)
@@ -337,42 +184,26 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if input.KeyCode == Enum.KeyCode.X and flyToggleEnabled then
             if isFlying then stopFly() else startFly() end
         end
-        if input.KeyCode == Enum.KeyCode.W then flyCtrl.F = 1 end
-        if input.KeyCode == Enum.KeyCode.S then flyCtrl.B = -1 end
-        if input.KeyCode == Enum.KeyCode.A then flyCtrl.L = -1 end
-        if input.KeyCode == Enum.KeyCode.D then flyCtrl.R = 1 end
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input, gameProcessed)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then rightClickHeld = false end
-    if input.KeyCode == Enum.KeyCode.W then flyCtrl.F = 0 end
-    if input.KeyCode == Enum.KeyCode.S then flyCtrl.B = 0 end
-    if input.KeyCode == Enum.KeyCode.A then flyCtrl.L = 0 end
-    if input.KeyCode == Enum.KeyCode.D then flyCtrl.R = 0 end
 end)
 
 local function getPlayerClosestToCrosshair()
     local nearestCharacter = nil
-    local shortestScreenDistance = math.huge
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    local shortestDist = math.huge
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
     for _, player in pairs(Players:GetPlayers()) do
         if isOpponent(player) and player.Character then
             local targetPart = player.Character:FindFirstChild("Head") or player.Character:FindFirstChild("HumanoidRootPart")
-            local humanoid = player.Character:FindFirstChild("Humanoid")
-            
-            if targetPart and humanoid and humanoid.Health > 0 then
+            if targetPart then
                 local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-                if onScreen then
-                    local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                    if (not fovCheckEnabled) or (screenDistance <= fovRadiusValue) then
-                        if screenDistance < shortestScreenDistance then
-                            shortestScreenDistance = screenDistance
-                            nearestCharacter = player.Character
-                        end
-                    end
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                if onScreen and dist <= fovRadiusValue and dist < shortestDist then
+                    shortestDist = dist
+                    nearestCharacter = player.Character
                 end
             end
         end
@@ -380,125 +211,38 @@ local function getPlayerClosestToCrosshair()
     return nearestCharacter
 end
 
--- THE FIX: ARSENAL SPECIFIC HEAD HITBOX EXTENDER
-task.spawn(function()
-    while task.wait(0.1) do
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character then
-                local head = player.Character:FindFirstChild("Head")
-                local hum = player.Character:FindFirstChild("Humanoid")
-                
-                if head and hum and hum.Health > 0 then
-                    if hbeEnabled and isOpponent(player) then
-                        -- Target the Head specifically. This stops the floor-clipping.
-                        head.Size = Vector3.new(hbeSizeValue, hbeSizeValue, hbeSizeValue)
-                        head.Massless = true
-                        head.CanCollide = false
-                        
-                        if hbeVisibleEnabled then
-                            head.Transparency = 0.5
-                            head.Material = Enum.Material.ForceField
-                            head.Color = Color3.fromRGB(255, 0, 0)
-                        else
-                            head.Transparency = 1
-                        end
-                    else
-                        -- Arsenal defaults: Head resets to normal size so it doesn't look broken
-                        head.Size = Vector3.new(1.2, 1.2, 1.2) -- Standard R15/Arsenal Head
-                        head.Transparency = 0
-                        head.Material = Enum.Material.Plastic
-                        head.Color = Color3.fromRGB(163, 162, 165)
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- Core Frame Rendering Loop
 RunService.RenderStepped:Connect(function()
-    if isFlying and bodyVelocity and bodyGyro then
-        local camCF = Camera.CFrame
-        bodyGyro.cframe = camCF
-        local moveDir = Vector3.new(flyCtrl.L + flyCtrl.R, 0, flyCtrl.F + flyCtrl.B)
-        if moveDir.Magnitude > 0 then
-            bodyVelocity.velocity = (camCF.RightVector * (flyCtrl.L + flyCtrl.R) + camCF.LookVector * (flyCtrl.F + flyCtrl.B)) * flySpeed
-        else
-            bodyVelocity.velocity = Vector3.new(0, 0, 0)
-        end
-    end
-
+    -- FOV
     FOVCircle.Radius = fovRadiusValue
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    FOVCircle.Visible = fovCheckEnabled and aimbotEnabled
-
+    FOVCircle.Visible = aimbotEnabled and fovCheckEnabled
+    
+    -- Fly/Aimbot Logic
+    if isFlying and bodyVelocity and bodyGyro then
+        bodyGyro.cframe = Camera.CFrame
+    end
+    
     if aimbotEnabled and rightClickHeld then
         local target = getPlayerClosestToCrosshair()
-        if target then
-            local aimPart = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart")
-            if aimPart then
-                local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, aimPart.Position)
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 1 / smoothnessValue)
-            end
+        if target and target:FindFirstChild("Head") then
+            local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, target.Head.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 1 / smoothnessValue)
         end
     end
     
+    -- ESP Rendering Loop
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local char = player.Character
             local esp = getESP(player)
-            
             local isAlive = char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
-            local isEnemy = not teamCheckEnabled or isOpponent(player)
-            
-            if isAlive and isEnemy then
+            if isAlive and isOpponent(player) then
                 local rootPart = char.HumanoidRootPart
                 local head = char.Head
-                local humanoid = char.Humanoid
-                
-                local hl = char:FindFirstChild("ESP_Highlight")
-                if espOutlineEnabled then
-                    if not hl then
-                        hl = Instance.new("Highlight")
-                        hl.Name = "ESP_Highlight"
-                        hl.FillTransparency = 1 
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop 
-                        hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-                        hl.Parent = char
-                    end
-                    hl.Enabled = true
-                else
-                    if hl then hl.Enabled = false end
-                end
-                
-                local bottomPos, onScreenBottom = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
-                local topPos, onScreenTop = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1, 0))
-                local centerPos, onScreenCenter = Camera:WorldToViewportPoint(rootPart.Position)
-                
-                if onScreenTop or onScreenBottom then
-                    local boxHeight = math.abs(bottomPos.Y - topPos.Y)
-                    local boxWidth = boxHeight * 0.6
-                    
-                    if espBoxEnabled then esp.Box.Size = Vector2.new(boxWidth, boxHeight) esp.Box.Position = Vector2.new(topPos.X - boxWidth/2, topPos.Y) esp.Box.Visible = true else esp.Box.Visible = false end
-                    if espNameEnabled then esp.Name.Text = player.Name esp.Name.Position = Vector2.new(topPos.X, topPos.Y - 18) esp.Name.Visible = true else esp.Name.Visible = false end
-                    if espDistanceEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then esp.Distance.Text = tostring(math.floor((LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude)) .. " studs" esp.Distance.Position = Vector2.new(topPos.X, bottomPos.Y + 4) esp.Distance.Visible = true else esp.Distance.Visible = false end
-                    if espTracersEnabled and onScreenCenter then esp.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y) esp.Tracer.To = Vector2.new(centerPos.X, centerPos.Y) esp.Tracer.Visible = true else esp.Tracer.Visible = false end
-                    
-                    if espHealthEnabled then
-                        local hpFactor = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
-                        local barWidth = 3
-                        local barXOffset = topPos.X - (boxWidth / 2) - barWidth - 4
-                        local barColor = hpFactor <= 0.20 and Color3.fromRGB(255, 0, 0) or (hpFactor <= 0.55 and Color3.fromRGB(255, 140, 0) or Color3.fromRGB(0, 255, 0))
-                        esp.HealthBarBG.Size = Vector2.new(barWidth, boxHeight) esp.HealthBarBG.Position = Vector2.new(barXOffset, topPos.Y) esp.HealthBarBG.Visible = true
-                        esp.HealthBar.Color = barColor esp.HealthBar.Size = Vector2.new(barWidth, boxHeight * hpFactor) esp.HealthBar.Position = Vector2.new(barXOffset, topPos.Y + (boxHeight - (boxHeight * hpFactor))) esp.HealthBar.Visible = true
-                    else
-                        esp.HealthBarBG.Visible = false esp.HealthBar.Visible = false
-                    end
-                else
-                    for _, obj in pairs(esp) do if typeof(obj) == "userdata" then obj.Visible = false end end
-                end
+                local bottomPos = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
+                local topPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1, 0))
+                if espBoxEnabled then esp.Box.Size = Vector2.new(100, 200) esp.Box.Position = Vector2.new(topPos.X, topPos.Y) esp.Box.Visible = true else esp.Box.Visible = false end
             else
-                if char then local ohl = char:FindFirstChild("ESP_Highlight") if ohl then ohl.Enabled = false end end
                 for _, obj in pairs(esp) do if typeof(obj) == "userdata" then obj.Visible = false end end
             end
         end

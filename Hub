@@ -13,7 +13,7 @@ local Camera = Workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
 
 -- Configuration Variables (Combat)
-local aimbotEnabled = false
+aimbotEnabled = false
 local rightClickHeld = false
 local teamCheckEnabled = true
 local fovCheckEnabled = false
@@ -79,7 +79,7 @@ local function getESP(player)
         espCache[player].Box.Thickness = 1.5
         espCache[player].Box.Filled = false
         
-        -- Texts (Clean system font fix)
+        -- Texts
         local texts = {espCache[player].Name, espCache[player].Distance}
         for _, txt in pairs(texts) do
             txt.Color = Color3.fromRGB(255, 255, 255)
@@ -120,7 +120,7 @@ local function cleanPlayerESP(player)
 end
 Players.PlayerRemoving:Connect(cleanPlayerESP)
 
--- Strict opponent verification matrix (Strict Team Filtering)
+-- Strict opponent verification matrix
 local function isOpponent(player)
     if player == LocalPlayer then return false end
     if player.Team and LocalPlayer.Team then
@@ -131,7 +131,7 @@ local function isOpponent(player)
     return true
 end
 
--- Create the Rayfield Window (Removed "Mega Edition")
+-- Create the Rayfield Window
 local Window = Rayfield:CreateWindow({
    Name = "MantizzzHub 🚀",
    LoadingTitle = "Loading MantizzzHub...",
@@ -161,7 +161,7 @@ CombatTab:CreateToggle({
 })
 
 CombatTab:CreateToggle({
-   Name = "Triggerbot (Teleport Kill Opponents Loop)",
+   Name = "Triggerbot (Teleport Kill Nearest Opponent)",
    CurrentValue = false,
    Flag = "TriggerToggle", 
    Callback = function(Value) triggerbotEnabled = Value end,
@@ -201,7 +201,6 @@ CombatTab:CreateSlider({
    Callback = function(Value) smoothnessValue = Value end,
 })
 
--- High-Risk Exploits Section
 CombatTab:CreateSection("⚠️ RAGE / BAN RISK")
 
 CombatTab:CreateToggle({
@@ -385,7 +384,7 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Force-Based Physics Velocity Infinite Jump Engine (Fixed)
+-- Force-Based Physics Velocity Infinite Jump Engine
 UserInputService.JumpRequest:Connect(function()
     if infJumpEnabled and LocalPlayer.Character then
         local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -453,36 +452,59 @@ local function getPlayerClosestToCrosshair()
     return nearestCharacter
 end
 
--- Rage Matrix: Handles Teleport, Auto-Aim & Fire Loop (Strict Opponent Target Fix)
+-- 3D Proximity Scanner: Evaluates and pulls the closest opponent in the workspace
+local function getAbsoluteNearestOpponent()
+    local nearestOpponent = nil
+    local shortest3DDistance = math.huge
+    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    
+    if not localRoot then return nil end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if isOpponent(player) and player.Character then
+            local root = player.Character:FindFirstChild("HumanoidRootPart")
+            local hum = player.Character:FindFirstChild("Humanoid")
+            if root and hum and hum.Health > 0 then
+                local distance = (localRoot.Position - root.Position).Magnitude
+                if distance < shortest3DDistance then
+                    shortest3DDistance = distance
+                    nearestOpponent = player
+                end
+            end
+        end
+    end
+    return nearestOpponent
+end
+
+-- Rage Matrix: Optimized Proximity Execution Loop (Fixed to target nearest player)
 task.spawn(function()
-    while task.wait() do
+    while task.wait(0.03) do
         if (killAllEnabled and killAllConfirmed) or triggerbotEnabled then
-            for _, player in pairs(Players:GetPlayers()) do
-                if isOpponent(player) and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
-                    local enemyChar = player.Character
+            local targetPlayer = getAbsoluteNearestOpponent()
+            
+            if targetPlayer and targetPlayer.Character then
+                local enemyChar = targetPlayer.Character
+                local targetPart = enemyChar:FindFirstChild("Head") or enemyChar:FindFirstChild("HumanoidRootPart")
+                local humanoid = enemyChar:FindFirstChild("Humanoid")
+                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                
+                if targetPart and humanoid and humanoid.Health > 0 and localRoot then
+                    -- Teleport slightly behind closest target
+                    localRoot.CFrame = targetPart.CFrame * CFrame.new(0, 0, 2)
                     
-                    while (killAllEnabled or triggerbotEnabled) and enemyChar and enemyChar:FindFirstChild("Humanoid") and enemyChar.Humanoid.Health > 0 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") do
-                        local targetPart = enemyChar:FindFirstChild("Head") or enemyChar:FindFirstChild("HumanoidRootPart")
-                        if targetPart then
-                            -- Teleport slightly behind target
-                            LocalPlayer.Character.HumanoidRootPart.CFrame = targetPart.CFrame * CFrame.new(0, 0, 2)
-                            
-                            -- Auto-Aim Lock
-                            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)
-                            
-                            -- Auto-Shoot (Tool activation + Virtual Click Engine)
-                            local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                            if tool then tool:Activate() end
-                            
-                            if typeof(mouse1click) == "function" then 
-                                mouse1click() 
-                            else
-                                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                                task.wait(0.01)
-                                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-                            end
-                        end
-                        task.wait(0.04)
+                    -- Instant Auto-Aim Snap
+                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)
+                    
+                    -- Tool Activation Engine
+                    local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                    if tool then tool:Activate() end
+                    
+                    if typeof(mouse1click) == "function" then 
+                        mouse1click() 
+                    else
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                        task.wait(0.01)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
                     end
                 end
             end

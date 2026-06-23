@@ -501,7 +501,7 @@ local function getAbsoluteNearestOpponent()
     return nearestOpponent
 end
 
--- NEW: Direct Body/Torso Hitbox Extender (Targets strictly the HumanoidRootPart)
+-- Direct Body/Torso Hitbox Extender (Targets strictly the HumanoidRootPart)
 task.spawn(function()
     while task.wait(0.1) do
         for _, player in pairs(Players:GetPlayers()) do
@@ -513,8 +513,11 @@ task.spawn(function()
                     if hbeEnabled and isOpponent(player) then
                         -- Apply the selected size safely
                         hrp.Size = Vector3.new(hbeSizeValue, hbeSizeValue, hbeSizeValue)
-                        hrp.Massless = true
                         hrp.CanCollide = false
+                        hrp.Massless = true
+                        
+                        -- Override physical properties so the density is 0 (weighs absolutely nothing)
+                        hrp.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
                         
                         -- Handle Visibility Logic
                         if hbeVisibleEnabled then
@@ -530,6 +533,9 @@ task.spawn(function()
                         hrp.Transparency = 1
                         hrp.Material = Enum.Material.Plastic
                         hrp.Color = Color3.fromRGB(163, 162, 165)
+                        
+                        -- Revert physical properties to default Roblox humanoid properties
+                        hrp.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5, 1, 1) 
                     end
                 end
             end

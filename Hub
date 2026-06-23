@@ -9,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
 
 -- Configuration Variables (Combat)
 local aimbotEnabled = false
@@ -16,6 +17,9 @@ local rightClickHeld = false
 local teamCheckEnabled = false
 local fovCheckEnabled = false
 local headshotEnabled = false
+local triggerbotEnabled = false
+local killAllEnabled = false
+local killAllConfirmed = false
 local fovRadiusValue = 100
 local smoothnessValue = 1
 
@@ -24,6 +28,9 @@ local espOutlineEnabled = false
 local espBoxEnabled = false
 local espNameEnabled = false
 local espHealthEnabled = false
+local espDistanceEnabled = false
+local espTracersEnabled = false
+local espSkeletonEnabled = false
 
 -- Configuration Variables (Movement)
 local flyToggleEnabled = false
@@ -31,8 +38,10 @@ local isFlying = false
 local flySpeed = 50
 local speedToggleEnabled = false
 local walkSpeedValue = 16
+local noclipEnabled = false
+local infJumpEnabled = false
 
--- Fly Objects & Controllers
+-- Fly Controllers
 local bodyGyro, bodyVelocity
 local flyCtrl = {F = 0, B = 0, L = 0, R = 0}
 
@@ -54,7 +63,15 @@ local function getESP(player)
             Box = Drawing.new("Square"),
             Name = Drawing.new("Text"),
             HealthBarBG = Drawing.new("Square"),
-            HealthBar = Drawing.new("Square")
+            HealthBar = Drawing.new("Square"),
+            Distance = Drawing.new("Text"),
+            Tracer = Drawing.new("Line"),
+            -- Skeleton lines (Hybrid R6/R15 setup)
+            H2T = Drawing.new("Line"), -- Head to Torso
+            T2L = Drawing.new("Line"), -- Torso to Left Arm
+            T2R = Drawing.new("Line"), -- Torso to Right Arm
+            T2LL = Drawing.new("Line"), -- Torso to Left Leg
+            T2RL = Drawing.new("Line")  -- Torso to Right Leg
         }
         
         -- Box
@@ -62,38 +79,52 @@ local function getESP(player)
         espCache[player].Box.Thickness = 1.5
         espCache[player].Box.Filled = false
         
-        -- Name (Smaller Font)
-        espCache[player].Name.Color = Color3.fromRGB(255, 255, 255)
-        espCache[player].Name.Size = 13 -- Decreased size
-        espCache[player].Name.Center = true
-        espCache[player].Name.Outline = true
+        -- Texts (Clean system font)
+        local texts = {espCache[player].Name, espCache[player].Distance}
+        for _, txt in pairs(texts) do
+            txt.Color = Color3.fromRGB(255, 255, 255)
+            txt.Size = 13
+            txt.Center = true
+            txt.Outline = true
+            txt.Font = 2
+        end
         
-        -- Health Bar Background (Black)
+        -- Tracer Line
+        espCache[player].Tracer.Color = Color3.fromRGB(255, 0, 0)
+        espCache[player].Tracer.Thickness = 1
+        
+        -- Health Bars
         espCache[player].HealthBarBG.Color = Color3.fromRGB(0, 0, 0)
         espCache[player].HealthBarBG.Filled = true
         espCache[player].HealthBarBG.Thickness = 1
-        
-        -- Health Bar Foreground (Dynamic Color)
         espCache[player].HealthBar.Filled = true
         espCache[player].HealthBar.Thickness = 1
+        
+        -- Skeleton Lines Style
+        local skelLines = {espCache[player].H2T, espCache[player].T2L, espCache[player].T2R, espCache[player].T2LL, espCache[player].T2RL}
+        for _, line in pairs(skelLines) do
+            line.Color = Color3.fromRGB(255, 255, 255)
+            line.Thickness = 1.5
+        end
     end
     return espCache[player]
 end
 
-Players.PlayerRemoving:Connect(function(player)
+-- Cleanup function to prevent severe lag/crashes
+local function cleanPlayerESP(player)
     if espCache[player] then
-        espCache[player].Box:Remove()
-        espCache[player].Name:Remove()
-        espCache[player].HealthBarBG:Remove()
-        espCache[player].HealthBar:Remove()
+        for _, obj in pairs(espCache[player]) do
+            obj:Remove()
+        end
         espCache[player] = nil
     end
-end)
+end
+Players.PlayerRemoving:Connect(cleanPlayerESP)
 
 -- Create the Rayfield Window
 local Window = Rayfield:CreateWindow({
-   Name = "MantizzzHub",
-   LoadingTitle = "Loading MantizzzHub...",
+   Name = "MantizzzHub 🚀",
+   LoadingTitle = "Loading MantizzzHub Mega Edition...",
    LoadingSubtitle = "by Mantiqzz",
    ConfigurationSaving = { Enabled = false },
    Discord = { Enabled = false },
@@ -110,13 +141,20 @@ CombatTab:CreateToggle({
    CurrentValue = false,
    Flag = "AimbotToggle", 
    Callback = function(Value) aimbotEnabled = Value end,
-})
+ })
 
 CombatTab:CreateToggle({
    Name = "Target Headshot (Instead of Body)",
    CurrentValue = false,
    Flag = "HeadshotToggle", 
    Callback = function(Value) headshotEnabled = Value end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Triggerbot (Auto-Shoot when Hovering)",
+   CurrentValue = false,
+   Flag = "TriggerToggle", 
+   Callback = function(Value) triggerbotEnabled = Value end,
 })
 
 CombatTab:CreateToggle({
@@ -153,6 +191,44 @@ CombatTab:CreateSlider({
    Callback = function(Value) smoothnessValue = Value end,
 })
 
+-- High-Risk Exploits Section
+CombatTab:CreateSection("⚠️ RAGE / BAN RISK")
+
+CombatTab:CreateToggle({
+   Name = "Confirm Kill-All Risk (Are you sure?)",
+   CurrentValue = false,
+   Flag = "KillConfirm",
+   Callback = function(Value)
+       killAllConfirmed = Value
+       if Value then
+           Rayfield:Notify({
+               Name = "🚨 CRITICAL WARNING",
+               Content = "Teleport Kill-All is highly visible! Anti-cheats will ban you quickly. Use at your own risk!",
+               Duration = 6,
+               Image = 4483362458,
+           })
+       end
+   end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Execute Loop Kill-All",
+   CurrentValue = false,
+   Flag = "KillAllLoop", 
+   Callback = function(Value) 
+       if Value and not killAllConfirmed then
+           Rayfield:Notify({
+               Name = "Execution Blocked",
+               Content = "You must toggle 'Confirm Kill-All Risk' first!",
+               Duration = 4,
+           })
+           killAllEnabled = false
+       else
+           killAllEnabled = Value 
+       end
+   end,
+})
+
 ---------------------------------------------------------
 -- VISUALS TAB
 ---------------------------------------------------------
@@ -173,10 +249,31 @@ VisualsTab:CreateToggle({
 })
 
 VisualsTab:CreateToggle({
+   Name = "Skeleton ESP",
+   CurrentValue = false,
+   Flag = "SkelToggle",
+   Callback = function(Value) espSkeletonEnabled = Value end,
+})
+
+VisualsTab:CreateToggle({
+   Name = "Tracers (Snaplines)",
+   CurrentValue = false,
+   Flag = "TraceToggle",
+   Callback = function(Value) espTracersEnabled = Value end,
+})
+
+VisualsTab:CreateToggle({
    Name = "Show Player Names",
    CurrentValue = false,
    Flag = "ESPNameToggle", 
    Callback = function(Value) espNameEnabled = Value end,
+})
+
+VisualsTab:CreateToggle({
+   Name = "Show Distance text",
+   CurrentValue = false,
+   Flag = "ESPDistToggle",
+   Callback = function(Value) espDistanceEnabled = Value end,
 })
 
 VisualsTab:CreateToggle({
@@ -197,12 +294,7 @@ MovementTab:CreateToggle({
    Flag = "FlyKeybindToggle", 
    Callback = function(Value) 
        flyToggleEnabled = Value 
-       -- Disable fly instantly if the main toggle is turned off
-       if not Value and isFlying then
-           isFlying = false
-           if bodyGyro then bodyGyro:Destroy() end
-           if bodyVelocity then bodyVelocity:Destroy() end
-       end
+       if not Value and isFlying then stopFly() end
    end,
 })
 
@@ -217,13 +309,27 @@ MovementTab:CreateSlider({
 })
 
 MovementTab:CreateToggle({
+   Name = "Noclip (Walk Through Walls)",
+   CurrentValue = false,
+   Flag = "NoclipToggle",
+   Callback = function(Value) noclipEnabled = Value end,
+})
+
+MovementTab:CreateToggle({
+   Name = "Infinite Jump",
+   CurrentValue = false,
+   Flag = "InfJumpToggle",
+   Callback = function(Value) infJumpEnabled = Value end,
+})
+
+MovementTab:CreateToggle({
    Name = "Enable Custom WalkSpeed",
    CurrentValue = false,
    Flag = "SpeedToggle", 
    Callback = function(Value) 
        speedToggleEnabled = Value 
        if not Value and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-           LocalPlayer.Character.Humanoid.WalkSpeed = 16 -- Reset to default
+           LocalPlayer.Character.Humanoid.WalkSpeed = 16 
        end
    end,
 })
@@ -239,50 +345,54 @@ MovementTab:CreateSlider({
 })
 
 ---------------------------------------------------------
--- LOGIC & FUNCTIONS
+-- LOGIC & ENVIRONMENT CONTROLS
 ---------------------------------------------------------
 
--- Fly Start/Stop Functions
-local function startFly()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    
-    local hrp = char.HumanoidRootPart
+-- Fly Physics System
+function startFly()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
     bodyGyro = Instance.new("BodyGyro", hrp)
     bodyGyro.P = 9e4
     bodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
     bodyGyro.cframe = hrp.CFrame
-    
     bodyVelocity = Instance.new("BodyVelocity", hrp)
     bodyVelocity.velocity = Vector3.new(0, 0, 0)
     bodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
-    
     isFlying = true
 end
 
-local function stopFly()
+function stopFly()
     isFlying = false
     if bodyGyro then bodyGyro:Destroy() end
     if bodyVelocity then bodyVelocity:Destroy() end
 end
 
--- If player dies, reset fly to prevent bugs
-LocalPlayer.CharacterAdded:Connect(function()
-    if isFlying then stopFly() end
+-- Noclip Engine connection (Fires safely before physics rendering)
+RunService.Stepped:Connect(function()
+    if noclipEnabled and LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
 end)
 
--- Input Manager for Aimbot, Fly Toggle, and Fly Movement
+-- Infinite Jump Hook
+UserInputService.JumpRequest:Connect(function()
+    if infJumpEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+-- Input Bind tracking
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed then
-        if input.UserInputType == Enum.UserInputType.MouseButton2 then
-            rightClickHeld = true
-        end
-        
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then rightClickHeld = true end
         if input.KeyCode == Enum.KeyCode.X and flyToggleEnabled then
             if isFlying then stopFly() else startFly() end
         end
-        
-        -- Fly directional controls
         if input.KeyCode == Enum.KeyCode.W then flyCtrl.F = 1 end
         if input.KeyCode == Enum.KeyCode.S then flyCtrl.B = -1 end
         if input.KeyCode == Enum.KeyCode.A then flyCtrl.L = -1 end
@@ -291,28 +401,23 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        rightClickHeld = false
-    end
-    
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then rightClickHeld = false end
     if input.KeyCode == Enum.KeyCode.W then flyCtrl.F = 0 end
     if input.KeyCode == Enum.KeyCode.S then flyCtrl.B = 0 end
     if input.KeyCode == Enum.KeyCode.A then flyCtrl.L = 0 end
     if input.KeyCode == Enum.KeyCode.D then flyCtrl.R = 0 end
 end)
 
--- Crosshair Target Selection
+-- Target Selection Math (Closest to Crosshair)
 local function getPlayerClosestToCrosshair()
     local nearestCharacter = nil
     local shortestScreenDistance = math.huge
-    
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             if teamCheckEnabled and player.Team == LocalPlayer.Team then continue end
-            
             local character = player.Character
             local targetPartName = headshotEnabled and "Head" or "HumanoidRootPart"
             local targetPart = character:FindFirstChild(targetPartName)
@@ -340,21 +445,48 @@ local function getPlayerClosestToCrosshair()
     return nearestCharacter
 end
 
--- Render Stepped Loop (Heartbeat of the script)
+-- Threaded loop handling the teleport Kill-All loop mechanics
+task.spawn(function()
+    while task.wait() do
+        if killAllEnabled and killAllConfirmed and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
+                    if not teamCheckEnabled or (teamCheckEnabled and player.Team ~= LocalPlayer.Team) then
+                        local enemyChar = player.Character
+                        
+                        -- Keep teleporting to the opponent until they drop dead
+                        while killAllEnabled and enemyChar and enemyChar:FindFirstChild("Humanoid") and enemyChar.Humanoid.Health > 0 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") do
+                            -- Teleport slightly behind or on top of them
+                            LocalPlayer.Character.HumanoidRootPart.CFrame = enemyChar.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
+                            
+                            -- Universal Tool Execution Loop
+                            local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                            if tool then
+                                tool:Activate()
+                            end
+                            if typeof(mouse1click) == "function" then mouse1click() end
+                            
+                            task.wait(0.05)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Core Rendering Loop
 RunService.RenderStepped:Connect(function()
-    
-    -- 1. Enforce WalkSpeed
+    -- 1. WalkSpeed management
     if speedToggleEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeedValue
     end
     
-    -- 2. Handle Fly Physics
+    -- 2. Fly Execution handling
     if isFlying and bodyVelocity and bodyGyro then
         local camCF = Camera.CFrame
         bodyGyro.cframe = camCF
-        
         local moveDir = Vector3.new(flyCtrl.L + flyCtrl.R, 0, flyCtrl.F + flyCtrl.B)
-        
         if moveDir.Magnitude > 0 then
             bodyVelocity.velocity = (camCF.RightVector * (flyCtrl.L + flyCtrl.R) + camCF.LookVector * (flyCtrl.F + flyCtrl.B)) * flySpeed
         else
@@ -362,12 +494,25 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- 3. Manage FOV Visuals
+    -- 3. FOV Visual update
     FOVCircle.Radius = fovRadiusValue
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Visible = fovCheckEnabled and aimbotEnabled
 
-    -- 4. Manage Aimbot Tracking
+    -- 4. Triggerbot Execution
+    if triggerbotEnabled and Mouse.Target then
+        local hitModel = Mouse.Target:FindFirstAncestorOfClass("Model")
+        if hitModel and hitModel:FindFirstChild("Humanoid") and Players:GetPlayerFromCharacter(hitModel) then
+            local targetPlayer = Players:GetPlayerFromCharacter(hitModel)
+            if targetPlayer ~= LocalPlayer and (not teamCheckEnabled or targetPlayer.Team ~= LocalPlayer.Team) then
+                if typeof(mouse1click) == "function" then mouse1click() end
+                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if tool then tool:Activate() end
+            end
+        end
+    end
+
+    -- 5. Aimbot Camera Interpolation
     if aimbotEnabled and rightClickHeld then
         local target = getPlayerClosestToCrosshair()
         if target then
@@ -375,13 +520,12 @@ RunService.RenderStepped:Connect(function()
             local aimPart = target:FindFirstChild(targetPartName)
             if aimPart then
                 local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, aimPart.Position)
-                local lerpFactor = 1 / smoothnessValue
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, lerpFactor)
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 1 / smoothnessValue)
             end
         end
     end
     
-    -- 5. Manage All ESP Updates
+    -- 6. Ultimate Custom ESP System Engine
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local char = player.Character
@@ -395,7 +539,7 @@ RunService.RenderStepped:Connect(function()
                 local head = char.Head
                 local humanoid = char.Humanoid
                 
-                -- OUTLINE ESP
+                -- Highlight Engine Outlines
                 local hl = char:FindFirstChild("ESP_Highlight")
                 if espOutlineEnabled then
                     if not hl then
@@ -411,15 +555,16 @@ RunService.RenderStepped:Connect(function()
                     if hl then hl.Enabled = false end
                 end
                 
-                -- DRAWING API ESP
+                -- Coordinate Translation Math
                 local bottomPos, onScreenBottom = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
                 local topPos, onScreenTop = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1, 0))
+                local centerPos, onScreenCenter = Camera:WorldToViewportPoint(rootPart.Position)
                 
                 if onScreenTop or onScreenBottom then
                     local boxHeight = math.abs(bottomPos.Y - topPos.Y)
                     local boxWidth = boxHeight * 0.6
                     
-                    -- Box ESP
+                    -- Dynamic 2D Square Box
                     if espBoxEnabled then
                         esp.Box.Size = Vector2.new(boxWidth, boxHeight)
                         esp.Box.Position = Vector2.new(topPos.X - boxWidth/2, topPos.Y)
@@ -428,7 +573,7 @@ RunService.RenderStepped:Connect(function()
                         esp.Box.Visible = false
                     end
                     
-                    -- Name ESP
+                    -- Name Processing
                     if espNameEnabled then
                         esp.Name.Text = player.Name
                         esp.Name.Position = Vector2.new(topPos.X, topPos.Y - 18)
@@ -437,20 +582,44 @@ RunService.RenderStepped:Connect(function()
                         esp.Name.Visible = false
                     end
                     
-                    -- Health Bar ESP
+                    -- Distance Processing
+                    if espDistanceEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        local distance = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude)
+                        esp.Distance.Text = tostring(distance) .. " studs"
+                        esp.Distance.Position = Vector2.new(topPos.X, bottomPos.Y + 4)
+                        esp.Distance.Visible = true
+                    else
+                        esp.Distance.Visible = false
+                    end
+                    
+                    -- Screen Snaplines (Tracers)
+                    if espTracersEnabled and onScreenCenter then
+                        esp.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                        esp.Tracer.To = Vector2.new(centerPos.X, centerPos.Y)
+                        esp.Tracer.Visible = true
+                    else
+                        esp.Tracer.Visible = false
+                    end
+                    
+                    -- Explicit Health Bar Color Step thresholds
                     if espHealthEnabled then
                         local hpFactor = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
                         local barWidth = 3
                         local barXOffset = topPos.X - (boxWidth / 2) - barWidth - 4
                         
-                        -- Background (Black)
+                        local barColor = Color3.fromRGB(0, 255, 0) -- Green default
+                        if hpFactor <= 0.20 then
+                            barColor = Color3.fromRGB(255, 0, 0) -- Red (Almost dead)
+                        elseif hpFactor <= 0.55 then
+                            barColor = Color3.fromRGB(255, 140, 0) -- Orange (Half health)
+                        end
+                        
                         esp.HealthBarBG.Size = Vector2.new(barWidth, boxHeight)
                         esp.HealthBarBG.Position = Vector2.new(barXOffset, topPos.Y)
                         esp.HealthBarBG.Visible = true
                         
-                        -- Foreground (Fading color)
                         local currentHpHeight = boxHeight * hpFactor
-                        esp.HealthBar.Color = Color3.fromRGB(255 - (hpFactor * 255), hpFactor * 255, 0)
+                        esp.HealthBar.Color = barColor
                         esp.HealthBar.Size = Vector2.new(barWidth, currentHpHeight)
                         esp.HealthBar.Position = Vector2.new(barXOffset, topPos.Y + (boxHeight - currentHpHeight))
                         esp.HealthBar.Visible = true
@@ -458,21 +627,45 @@ RunService.RenderStepped:Connect(function()
                         esp.HealthBarBG.Visible = false
                         esp.HealthBar.Visible = false
                     end
+                    
+                    -- Skeleton Connection Matrix
+                    if espSkeletonEnabled then
+                        -- Check for core joints across R6 / R15 layouts
+                        local tPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+                        local lArm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftUpperArm")
+                        local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightUpperArm")
+                        local lLeg = char:FindFirstChild("Left Leg") or char:FindFirstChild("LeftUpperLeg")
+                        local rLeg = char:FindFirstChild("Right Leg") or char:FindFirstChild("RightUpperLeg")
+                        
+                        if tPart and lArm and rArm and lLeg and rLeg then
+                            local h2d = Camera:WorldToViewportPoint(head.Position)
+                            local t2d = Camera:WorldToViewportPoint(tPart.Position)
+                            local la2d = Camera:WorldToViewportPoint(lArm.Position)
+                            local ra2d = Camera:WorldToViewportPoint(rArm.Position)
+                            local ll2d = Camera:WorldToViewportPoint(lLeg.Position)
+                            local rl2d = Camera:WorldToViewportPoint(rLeg.Position)
+                            
+                            esp.H2T.From = Vector2.new(h2d.X, h2d.Y) esp.H2T.To = Vector2.new(t2d.X, t2d.Y)
+                            esp.T2L.From = Vector2.new(t2d.X, t2d.Y) esp.T2L.To = Vector2.new(la2d.X, la2d.Y)
+                            esp.T2R.From = Vector2.new(t2d.X, t2d.Y) esp.T2R.To = Vector2.new(ra2d.X, ra2d.Y)
+                            esp.T2LL.From = Vector2.new(t2d.X, t2d.Y) esp.T2LL.To = Vector2.new(ll2d.X, ll2d.Y)
+                            esp.T2RL.From = Vector2.new(t2d.X, t2d.Y) esp.T2RL.To = Vector2.new(rl2d.X, rl2d.Y)
+                            
+                            local skelLines = {esp.H2T, esp.T2L, esp.T2R, esp.T2LL, esp.T2RL}
+                            for _, l in pairs(skelLines) do l.Visible = true end
+                        end
+                    else
+                        local skelLines = {esp.H2T, esp.T2L, esp.T2R, esp.T2LL, esp.T2RL}
+                        for _, l in pairs(skelLines) do l.Visible = false end
+                    end
                 else
-                    esp.Box.Visible = false
-                    esp.Name.Visible = false
-                    esp.HealthBarBG.Visible = false
-                    esp.HealthBar.Visible = false
+                    -- Hide everything if behind screen
+                    for _, obj in pairs(esp) do if typeof(obj) == "table" or (typeof(obj) == "userdata" and obj.ClassName == "Square" or obj.ClassName == "Text" or obj.ClassName == "Line") then obj.Visible = false end end
                 end
             else
-                if char then
-                    local hl = char:FindFirstChild("ESP_Highlight")
-                    if hl then hl.Enabled = false end
-                end
-                esp.Box.Visible = false
-                esp.Name.Visible = false
-                esp.HealthBarBG.Visible = false
-                esp.HealthBar.Visible = false
+                -- Teammate / Death hidden reset
+                if char then local ohl = char:FindFirstChild("ESP_Highlight") if ohl then ohl.Enabled = false end end
+                for _, obj in pairs(esp) do if typeof(obj) == "table" or (typeof(obj) == "userdata" and obj.ClassName == "Square" or obj.ClassName == "Text" or obj.ClassName == "Line") then obj.Visible = false end end
             end
         end
     end

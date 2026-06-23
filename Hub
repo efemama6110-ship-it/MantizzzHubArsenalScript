@@ -79,12 +79,10 @@ local function getESP(player)
             T2RL = Drawing.new("Line")  
         }
         
-        -- Box
         espCache[player].Box.Color = Color3.fromRGB(255, 0, 0)
         espCache[player].Box.Thickness = 1.5
         espCache[player].Box.Filled = false
         
-        -- Texts
         local texts = {espCache[player].Name, espCache[player].Distance}
         for _, txt in pairs(texts) do
             txt.Color = Color3.fromRGB(255, 255, 255)
@@ -94,18 +92,15 @@ local function getESP(player)
             txt.Font = 2
         end
         
-        -- Tracer Line
         espCache[player].Tracer.Color = Color3.fromRGB(255, 0, 0)
         espCache[player].Tracer.Thickness = 1
         
-        -- Health Bars
         espCache[player].HealthBarBG.Color = Color3.fromRGB(0, 0, 0)
         espCache[player].HealthBarBG.Filled = true
         espCache[player].HealthBarBG.Thickness = 1
         espCache[player].HealthBar.Filled = true
         espCache[player].HealthBar.Thickness = 1
         
-        -- Skeleton Style
         local skelLines = {espCache[player].H2T, espCache[player].T2L, espCache[player].T2R, espCache[player].T2LL, espCache[player].T2RL}
         for _, line in pairs(skelLines) do
             line.Color = Color3.fromRGB(255, 255, 255)
@@ -128,7 +123,7 @@ Players.PlayerRemoving:Connect(cleanPlayerESP)
 -- Strict opponent verification matrix
 local function isOpponent(player)
     if player == LocalPlayer then return false end
-    if player.Team and LocalPlayer.Team then
+    if teamCheckEnabled and player.Team and LocalPlayer.Team then
         if player.Team == LocalPlayer.Team and player.Team.Name ~= "Neutral" then
             return false
         end
@@ -210,7 +205,7 @@ CombatTab:CreateSlider({
 CombatTab:CreateSection("Hitbox Extender (HBE)")
 
 CombatTab:CreateToggle({
-   Name = "Enable Hitbox Extender",
+   Name = "Enable Hitbox Extender (Body/Torso)",
    CurrentValue = false,
    Flag = "HBEToggle",
    Callback = function(Value) hbeEnabled = Value end,
@@ -225,7 +220,7 @@ CombatTab:CreateToggle({
 
 CombatTab:CreateSlider({
    Name = "Hitbox Size",
-   Range = {2, 100},
+   Range = {2, 50},
    Increment = 1,
    Suffix = "studs",
    CurrentValue = 15,
@@ -244,7 +239,7 @@ CombatTab:CreateToggle({
        if Value then
            Rayfield:Notify({
                Name = "🚨 CRITICAL WARNING",
-               Content = "Teleport Kill-All is highly visible! Anti-cheats will ban you quickly. Use at your own risk!",
+               Content = "Teleport Kill-All is highly visible! Anti-cheats will ban you quickly.",
                Duration = 6,
                Image = 4483362458,
            })
@@ -506,64 +501,35 @@ local function getAbsoluteNearestOpponent()
     return nearestOpponent
 end
 
--- Hitbox Extender (HBE) Core Loop Engine
+-- NEW: Direct Body/Torso Hitbox Extender (Targets strictly the HumanoidRootPart)
 task.spawn(function()
     while task.wait(0.1) do
         for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                if hbeEnabled and isOpponent(player) then
-                    -- Expand hitboxes
-                    if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-                        for _, part in pairs(player.Character:GetChildren()) do
-                            if part:IsA("BasePart") then
-                                -- Save Original States (so we can revert later)
-                                if not part:FindFirstChild("OriginalSize") then
-                                    local os = Instance.new("Vector3Value")
-                                    os.Name = "OriginalSize"
-                                    os.Value = part.Size
-                                    os.Parent = part
-                                    
-                                    local ot = Instance.new("NumberValue")
-                                    ot.Name = "OriginalTransparency"
-                                    ot.Value = part.Transparency
-                                    ot.Parent = part
-                                    
-                                    local om = Instance.new("StringValue")
-                                    om.Name = "OriginalMaterial"
-                                    om.Value = part.Material.Name
-                                    om.Parent = part
-                                end
-                                
-                                -- Apply HBE Sliders
-                                part.Size = Vector3.new(hbeSizeValue, hbeSizeValue, hbeSizeValue)
-                                part.Massless = true
-                                part.CanCollide = false
-                                
-                                if hbeVisibleEnabled then
-                                    part.Transparency = 0.5
-                                    part.Material = Enum.Material.ForceField
-                                else
-                                    part.Transparency = 1
-                                end
-                            end
+            if player ~= LocalPlayer and player.Character then
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                local hum = player.Character:FindFirstChild("Humanoid")
+                
+                if hrp and hum and hum.Health > 0 then
+                    if hbeEnabled and isOpponent(player) then
+                        -- Apply the selected size safely
+                        hrp.Size = Vector3.new(hbeSizeValue, hbeSizeValue, hbeSizeValue)
+                        hrp.Massless = true
+                        hrp.CanCollide = false
+                        
+                        -- Handle Visibility Logic
+                        if hbeVisibleEnabled then
+                            hrp.Transparency = 0.5
+                            hrp.Material = Enum.Material.ForceField
+                            hrp.Color = Color3.fromRGB(255, 0, 0)
+                        else
+                            hrp.Transparency = 1
                         end
-                    end
-                else
-                    -- Auto-Revert if HBE is turned off, or if the player switches to your team
-                    if player.Character then
-                        for _, part in pairs(player.Character:GetChildren()) do
-                            if part:IsA("BasePart") and part:FindFirstChild("OriginalSize") then
-                                part.Size = part.OriginalSize.Value
-                                part.Transparency = part.OriginalTransparency.Value
-                                if part:FindFirstChild("OriginalMaterial") then
-                                    pcall(function() part.Material = Enum.Material[part.OriginalMaterial.Value] end)
-                                end
-                                part.Massless = false
-                                part.OriginalSize:Destroy()
-                                part.OriginalTransparency:Destroy()
-                                if part:FindFirstChild("OriginalMaterial") then part.OriginalMaterial:Destroy() end
-                            end
-                        end
+                    else
+                        -- Revert instantly if disabled or if they become a teammate
+                        hrp.Size = Vector3.new(2, 2, 1) -- Standard Roblox RootPart scale
+                        hrp.Transparency = 1
+                        hrp.Material = Enum.Material.Plastic
+                        hrp.Color = Color3.fromRGB(163, 162, 165)
                     end
                 end
             end

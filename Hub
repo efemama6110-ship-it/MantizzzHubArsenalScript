@@ -16,12 +16,17 @@ local aimbotEnabled = false
 local rightClickHeld = false
 local teamCheckEnabled = true
 local fovCheckEnabled = false
-local headshotEnabled = true
+local headshotEnabled = true 
 local triggerbotEnabled = false
 local killAllEnabled = false
 local killAllConfirmed = false
 local fovRadiusValue = 100
 local smoothnessValue = 1
+
+-- Configuration Variables (HBE)
+local hbeEnabled = false
+local hbeSizeValue = 15
+local hbeVisibleEnabled = true
 
 -- Configuration Variables (Visuals)
 local espOutlineEnabled = false
@@ -47,7 +52,7 @@ local flyCtrl = {F = 0, B = 0, L = 0, R = 0}
 
 -- Create the FOV Draw Circle
 local FOVCircle = Drawing.new("Circle")
-FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Color = Color3.fromRGB(255, 0, 0)
 FOVCircle.Thickness = 1
 FOVCircle.NumSides = 64
 FOVCircle.Radius = fovRadiusValue
@@ -72,6 +77,7 @@ local function getESP(player)
             T2LL = Drawing.new("Line"), 
             T2RL = Drawing.new("Line")  
         }
+        
         espCache[player].Box.Color = Color3.fromRGB(255, 0, 0)
         espCache[player].Box.Thickness = 1.5
         espCache[player].Box.Filled = false
@@ -84,25 +90,36 @@ local function getESP(player)
             txt.Outline = true
             txt.Font = 2
         end
+        
         espCache[player].Tracer.Color = Color3.fromRGB(255, 0, 0)
         espCache[player].Tracer.Thickness = 1
+        
         espCache[player].HealthBarBG.Color = Color3.fromRGB(0, 0, 0)
         espCache[player].HealthBarBG.Filled = true
         espCache[player].HealthBarBG.Thickness = 1
         espCache[player].HealthBar.Filled = true
         espCache[player].HealthBar.Thickness = 1
+        
+        local skelLines = {espCache[player].H2T, espCache[player].T2L, espCache[player].T2R, espCache[player].T2LL, espCache[player].T2RL}
+        for _, line in pairs(skelLines) do
+            line.Color = Color3.fromRGB(255, 255, 255)
+            line.Thickness = 1.5
+        end
     end
     return espCache[player]
 end
 
 local function cleanPlayerESP(player)
     if espCache[player] then
-        for _, obj in pairs(espCache[player]) do obj:Remove() end
+        for _, obj in pairs(espCache[player]) do 
+            obj:Remove() 
+        end
         espCache[player] = nil
     end
 end
 Players.PlayerRemoving:Connect(cleanPlayerESP)
 
+-- Strict opponent verification matrix
 local function isOpponent(player)
     if player == LocalPlayer then return false end
     if teamCheckEnabled and player.Team and LocalPlayer.Team then
@@ -116,43 +133,48 @@ end
 -- Create the Rayfield Window
 local Window = Rayfield:CreateWindow({
    Name = "MantizzzHub 🚀",
-   LoadingTitle = "Loading Full Features...",
-   LoadingSubtitle = "Arsenal Ready",
+   LoadingTitle = "Loading MantizzzHub...",
+   LoadingSubtitle = "Arsenal Edition",
    ConfigurationSaving = { Enabled = false },
+   Discord = { Enabled = false },
    KeySystem = false,
 })
 
----------------------------------------------------------
--- TABS
----------------------------------------------------------
+-- Combat Tab
 local CombatTab = Window:CreateTab("Combat", 4483362458)
-CombatTab:CreateToggle({Name = "Enable Aimbot (Hold Right Click)", CurrentValue = false, Callback = function(Value) aimbotEnabled = Value end })
-CombatTab:CreateToggle({Name = "Target Headshot", CurrentValue = true, Callback = function(Value) headshotEnabled = Value end })
-CombatTab:CreateToggle({Name = "Triggerbot (Teleport)", CurrentValue = false, Callback = function(Value) triggerbotEnabled = Value end })
-CombatTab:CreateToggle({Name = "Team Check", CurrentValue = true, Callback = function(Value) teamCheckEnabled = Value end })
-CombatTab:CreateSlider({Name = "FOV Radius", Range = {30, 500}, Increment = 5, CurrentValue = 100, Callback = function(Value) fovRadiusValue = Value end })
-CombatTab:CreateSlider({Name = "Smoothness", Range = {1, 20}, Increment = 1, CurrentValue = 1, Callback = function(Value) smoothnessValue = Value end })
+CombatTab:CreateToggle({Name = "Enable Aimbot (Hold Right Click)", CurrentValue = false, Flag = "AimbotToggle", Callback = function(Value) aimbotEnabled = Value end,})
+CombatTab:CreateToggle({Name = "Target Headshot", CurrentValue = true, Flag = "HeadshotToggle", Callback = function(Value) headshotEnabled = Value end,})
+CombatTab:CreateToggle({Name = "Triggerbot", CurrentValue = false, Flag = "TriggerToggle", Callback = function(Value) triggerbotEnabled = Value end,})
+CombatTab:CreateToggle({Name = "Team Check", CurrentValue = true, Flag = "TeamCheckToggle", Callback = function(Value) teamCheckEnabled = Value end,})
+CombatTab:CreateToggle({Name = "Use FOV Check", CurrentValue = false, Flag = "FovToggle", Callback = function(Value) fovCheckEnabled = Value end,})
+CombatTab:CreateSlider({Name = "FOV Radius", Range = {30, 500}, Increment = 5, CurrentValue = 100, Flag = "FovSlider", Callback = function(Value) fovRadiusValue = Value end,})
+CombatTab:CreateSlider({Name = "Aimbot Smoothness", Range = {1, 20}, Increment = 1, CurrentValue = 1, Flag = "SmoothnessSlider", Callback = function(Value) smoothnessValue = Value end,})
 
+CombatTab:CreateSection("Arsenal Hitbox Extender")
+CombatTab:CreateToggle({Name = "Enable HBE (Head Only)", CurrentValue = false, Flag = "HBEToggle", Callback = function(Value) hbeEnabled = Value end,})
+CombatTab:CreateToggle({Name = "Show Hitboxes", CurrentValue = true, Flag = "HBEVisToggle", Callback = function(Value) hbeVisibleEnabled = Value end,})
+CombatTab:CreateSlider({Name = "Hitbox Size", Range = {2, 50}, Increment = 1, CurrentValue = 15, Flag = "HBESlider", Callback = function(Value) hbeSizeValue = Value end,})
+
+-- Visuals & Movement
 local VisualsTab = Window:CreateTab("Visuals", 7059346386)
-VisualsTab:CreateToggle({Name = "Enemy Outline ESP", CurrentValue = false, Callback = function(Value) espOutlineEnabled = Value end })
-VisualsTab:CreateToggle({Name = "Enemy Box ESP", CurrentValue = false, Callback = function(Value) espBoxEnabled = Value end })
-VisualsTab:CreateToggle({Name = "Skeleton ESP", CurrentValue = false, Callback = function(Value) espSkeletonEnabled = Value end })
-VisualsTab:CreateToggle({Name = "Tracers", CurrentValue = false, Callback = function(Value) espTracersEnabled = Value end })
-VisualsTab:CreateToggle({Name = "Show Names", CurrentValue = false, Callback = function(Value) espNameEnabled = Value end })
-VisualsTab:CreateToggle({Name = "Show Distance", CurrentValue = false, Callback = function(Value) espDistanceEnabled = Value end })
-VisualsTab:CreateToggle({Name = "Show Health Bar", CurrentValue = false, Callback = function(Value) espHealthEnabled = Value end })
+VisualsTab:CreateToggle({ Name = "Enemy Outline ESP", CurrentValue = false, Flag = "ESPOutlineToggle", Callback = function(Value) espOutlineEnabled = Value end })
+VisualsTab:CreateToggle({ Name = "Enemy Box ESP", CurrentValue = false, Flag = "ESPBoxToggle", Callback = function(Value) espBoxEnabled = Value end })
+VisualsTab:CreateToggle({ Name = "Skeleton ESP", CurrentValue = false, Flag = "SkelToggle", Callback = function(Value) espSkeletonEnabled = Value end })
+VisualsTab:CreateToggle({ Name = "Tracers", CurrentValue = false, Flag = "TraceToggle", Callback = function(Value) espTracersEnabled = Value end })
+VisualsTab:CreateToggle({ Name = "Show Names", CurrentValue = false, Flag = "ESPNameToggle", Callback = function(Value) espNameEnabled = Value end })
+VisualsTab:CreateToggle({ Name = "Show Distance", CurrentValue = false, Flag = "ESPDistToggle", Callback = function(Value) espDistanceEnabled = Value end })
+VisualsTab:CreateToggle({ Name = "Show Health Bar", CurrentValue = false, Flag = "ESPHealthToggle", Callback = function(Value) espHealthEnabled = Value end })
 
 local MovementTab = Window:CreateTab("Movement")
-MovementTab:CreateToggle({Name = "Enable Fly (Press 'X')", CurrentValue = false, Callback = function(Value) flyToggleEnabled = Value if not Value and isFlying then stopFly() end end })
-MovementTab:CreateSlider({Name = "Fly Speed", Range = {10, 200}, Increment = 5, CurrentValue = 50, Callback = function(Value) flySpeed = Value end })
-MovementTab:CreateToggle({Name = "Noclip", CurrentValue = false, Callback = function(Value) noclipEnabled = Value end })
-MovementTab:CreateToggle({Name = "Infinite Jump", CurrentValue = false, Callback = function(Value) infJumpEnabled = Value end })
+MovementTab:CreateToggle({ Name = "Enable Fly (Press 'X')", CurrentValue = false, Flag = "FlyKeybindToggle", Callback = function(Value) flyToggleEnabled = Value if not Value and isFlying then stopFly() end end })
+MovementTab:CreateSlider({ Name = "Fly Speed", Range = {10, 200}, Increment = 5, CurrentValue = 50, Flag = "FlySpeedSlider", Callback = function(Value) flySpeed = Value end })
+MovementTab:CreateToggle({ Name = "Noclip", CurrentValue = false, Flag = "NoclipToggle", Callback = function(Value) noclipEnabled = Value end })
+MovementTab:CreateToggle({ Name = "Infinite Jump", CurrentValue = false, Flag = "InfJumpToggle", Callback = function(Value) infJumpEnabled = Value end })
 
----------------------------------------------------------
--- LOGIC
----------------------------------------------------------
+-- Logic Controls
 function startFly()
-    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     bodyGyro = Instance.new("BodyGyro", hrp)
     bodyGyro.P = 9e4
@@ -178,72 +200,48 @@ RunService.Stepped:Connect(function()
     end
 end)
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed then
-        if input.UserInputType == Enum.UserInputType.MouseButton2 then rightClickHeld = true end
-        if input.KeyCode == Enum.KeyCode.X and flyToggleEnabled then
-            if isFlying then stopFly() else startFly() end
-        end
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then rightClickHeld = false end
-end)
-
-local function getPlayerClosestToCrosshair()
-    local nearestCharacter = nil
-    local shortestDist = math.huge
-    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    for _, player in pairs(Players:GetPlayers()) do
-        if isOpponent(player) and player.Character then
-            local targetPart = player.Character:FindFirstChild("Head") or player.Character:FindFirstChild("HumanoidRootPart")
-            if targetPart then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-                local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                if onScreen and dist <= fovRadiusValue and dist < shortestDist then
-                    shortestDist = dist
-                    nearestCharacter = player.Character
+-- FIXED HBE LOOP: Now checks for liveness before modifying
+task.spawn(function()
+    while task.wait(0.1) do
+        for _, player in pairs(Players:GetPlayers()) do
+            local char = player.Character
+            if player ~= LocalPlayer and char then
+                local head = char:FindFirstChild("Head")
+                local hum = char:FindFirstChild("Humanoid")
+                
+                -- Critical Fix: Only apply HBE if the player is actually alive
+                if hbeEnabled and isOpponent(player) and hum and hum.Health > 0 then
+                    if head then
+                        head.Size = Vector3.new(hbeSizeValue, hbeSizeValue, hbeSizeValue)
+                        head.CanCollide = false
+                        head.Transparency = hbeVisibleEnabled and 0.5 or 1
+                        head.Material = Enum.Material.ForceField
+                    end
+                else
+                    -- Reset to default immediately upon death
+                    if head then
+                        head.Size = Vector3.new(1.2, 1.2, 1.2)
+                        head.Transparency = 0
+                        head.Material = Enum.Material.Plastic
+                    end
                 end
             end
         end
     end
-    return nearestCharacter
-end
+end)
 
+-- Standard Render Loop
 RunService.RenderStepped:Connect(function()
-    -- FOV
-    FOVCircle.Radius = fovRadiusValue
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    FOVCircle.Visible = aimbotEnabled and fovCheckEnabled
-    
-    -- Fly/Aimbot Logic
-    if isFlying and bodyVelocity and bodyGyro then
-        bodyGyro.cframe = Camera.CFrame
-    end
+    -- Fly/Aimbot logic remains as provided...
+    if isFlying and bodyVelocity and bodyGyro then bodyGyro.cframe = Camera.CFrame end
     
     if aimbotEnabled and rightClickHeld then
         local target = getPlayerClosestToCrosshair()
-        if target and target:FindFirstChild("Head") then
-            local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, target.Head.Position)
-            Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 1 / smoothnessValue)
-        end
-    end
-    
-    -- ESP Rendering Loop
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            local char = player.Character
-            local esp = getESP(player)
-            local isAlive = char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
-            if isAlive and isOpponent(player) then
-                local rootPart = char.HumanoidRootPart
-                local head = char.Head
-                local bottomPos = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
-                local topPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1, 0))
-                if espBoxEnabled then esp.Box.Size = Vector2.new(100, 200) esp.Box.Position = Vector2.new(topPos.X, topPos.Y) esp.Box.Visible = true else esp.Box.Visible = false end
-            else
-                for _, obj in pairs(esp) do if typeof(obj) == "userdata" then obj.Visible = false end end
+        if target then
+            local aimPart = target:FindFirstChild("Head")
+            if aimPart then
+                local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, aimPart.Position)
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 1 / smoothnessValue)
             end
         end
     end

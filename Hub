@@ -13,7 +13,7 @@ local Camera = Workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
 
 -- Configuration Variables (Combat)
-aimbotEnabled = false
+local aimbotEnabled = false
 local rightClickHeld = false
 local teamCheckEnabled = true
 local fovCheckEnabled = false
@@ -23,6 +23,11 @@ local killAllEnabled = false
 local killAllConfirmed = false
 local fovRadiusValue = 100
 local smoothnessValue = 1
+
+-- Configuration Variables (HBE)
+local hbeEnabled = false
+local hbeSizeValue = 15
+local hbeVisibleEnabled = true
 
 -- Configuration Variables (Visuals)
 local espOutlineEnabled = false
@@ -168,7 +173,7 @@ CombatTab:CreateToggle({
 })
 
 CombatTab:CreateToggle({
-   Name = "Team Check (Aimbot/ESP)",
+   Name = "Team Check (Aimbot/ESP/HBE)",
    CurrentValue = true,
    Flag = "TeamCheckToggle", 
    Callback = function(Value) teamCheckEnabled = Value end,
@@ -199,6 +204,33 @@ CombatTab:CreateSlider({
    CurrentValue = 1,
    Flag = "SmoothnessSlider",
    Callback = function(Value) smoothnessValue = Value end,
+})
+
+-- Hitbox Extender Section
+CombatTab:CreateSection("Hitbox Extender (HBE)")
+
+CombatTab:CreateToggle({
+   Name = "Enable Hitbox Extender",
+   CurrentValue = false,
+   Flag = "HBEToggle",
+   Callback = function(Value) hbeEnabled = Value end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Show Hitboxes (Visibility)",
+   CurrentValue = true,
+   Flag = "HBEVisToggle",
+   Callback = function(Value) hbeVisibleEnabled = Value end,
+})
+
+CombatTab:CreateSlider({
+   Name = "Hitbox Size",
+   Range = {2, 100},
+   Increment = 1,
+   Suffix = "studs",
+   CurrentValue = 15,
+   Flag = "HBESlider",
+   Callback = function(Value) hbeSizeValue = Value end,
 })
 
 CombatTab:CreateSection("⚠️ RAGE / BAN RISK")
@@ -384,7 +416,6 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Force-Based Physics Velocity Infinite Jump Engine
 UserInputService.JumpRequest:Connect(function()
     if infJumpEnabled and LocalPlayer.Character then
         local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -452,7 +483,6 @@ local function getPlayerClosestToCrosshair()
     return nearestCharacter
 end
 
--- 3D Proximity Scanner: Evaluates and pulls the closest opponent in the workspace
 local function getAbsoluteNearestOpponent()
     local nearestOpponent = nil
     local shortest3DDistance = math.huge
@@ -476,7 +506,72 @@ local function getAbsoluteNearestOpponent()
     return nearestOpponent
 end
 
--- Rage Matrix: Optimized Proximity Execution Loop (Fixed to target nearest player)
+-- Hitbox Extender (HBE) Core Loop Engine
+task.spawn(function()
+    while task.wait(0.1) do
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                if hbeEnabled and isOpponent(player) then
+                    -- Expand hitboxes
+                    if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                        for _, part in pairs(player.Character:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                -- Save Original States (so we can revert later)
+                                if not part:FindFirstChild("OriginalSize") then
+                                    local os = Instance.new("Vector3Value")
+                                    os.Name = "OriginalSize"
+                                    os.Value = part.Size
+                                    os.Parent = part
+                                    
+                                    local ot = Instance.new("NumberValue")
+                                    ot.Name = "OriginalTransparency"
+                                    ot.Value = part.Transparency
+                                    ot.Parent = part
+                                    
+                                    local om = Instance.new("StringValue")
+                                    om.Name = "OriginalMaterial"
+                                    om.Value = part.Material.Name
+                                    om.Parent = part
+                                end
+                                
+                                -- Apply HBE Sliders
+                                part.Size = Vector3.new(hbeSizeValue, hbeSizeValue, hbeSizeValue)
+                                part.Massless = true
+                                part.CanCollide = false
+                                
+                                if hbeVisibleEnabled then
+                                    part.Transparency = 0.5
+                                    part.Material = Enum.Material.ForceField
+                                else
+                                    part.Transparency = 1
+                                end
+                            end
+                        end
+                    end
+                else
+                    -- Auto-Revert if HBE is turned off, or if the player switches to your team
+                    if player.Character then
+                        for _, part in pairs(player.Character:GetChildren()) do
+                            if part:IsA("BasePart") and part:FindFirstChild("OriginalSize") then
+                                part.Size = part.OriginalSize.Value
+                                part.Transparency = part.OriginalTransparency.Value
+                                if part:FindFirstChild("OriginalMaterial") then
+                                    pcall(function() part.Material = Enum.Material[part.OriginalMaterial.Value] end)
+                                end
+                                part.Massless = false
+                                part.OriginalSize:Destroy()
+                                part.OriginalTransparency:Destroy()
+                                if part:FindFirstChild("OriginalMaterial") then part.OriginalMaterial:Destroy() end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Rage Matrix: Optimized Proximity Execution Loop
 task.spawn(function()
     while task.wait(0.03) do
         if (killAllEnabled and killAllConfirmed) or triggerbotEnabled then
@@ -489,13 +584,9 @@ task.spawn(function()
                 local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 
                 if targetPart and humanoid and humanoid.Health > 0 and localRoot then
-                    -- Teleport slightly behind closest target
                     localRoot.CFrame = targetPart.CFrame * CFrame.new(0, 0, 2)
-                    
-                    -- Instant Auto-Aim Snap
                     Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)
                     
-                    -- Tool Activation Engine
                     local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
                     if tool then tool:Activate() end
                     
@@ -545,7 +636,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Custom ESP Array Controller
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local char = player.Character

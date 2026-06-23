@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -14,12 +15,11 @@ local Mouse = LocalPlayer:GetMouse()
 -- Configuration Variables (Combat)
 local aimbotEnabled = false
 local rightClickHeld = false
-local teamCheckEnabled = false
+local teamCheckEnabled = true -- Defaulted to true to protect user
 local fovCheckEnabled = false
 local headshotEnabled = false
 local triggerbotEnabled = false
-local killAllEnabled = false
-local killAllConfirmed = false
+local triggerbotConfirmed = false
 local fovRadiusValue = 100
 local smoothnessValue = 1
 
@@ -66,12 +66,11 @@ local function getESP(player)
             HealthBar = Drawing.new("Square"),
             Distance = Drawing.new("Text"),
             Tracer = Drawing.new("Line"),
-            -- Skeleton lines (Hybrid R6/R15 setup)
-            H2T = Drawing.new("Line"), -- Head to Torso
-            T2L = Drawing.new("Line"), -- Torso to Left Arm
-            T2R = Drawing.new("Line"), -- Torso to Right Arm
-            T2LL = Drawing.new("Line"), -- Torso to Left Leg
-            T2RL = Drawing.new("Line")  -- Torso to Right Leg
+            H2T = Drawing.new("Line"), 
+            T2L = Drawing.new("Line"), 
+            T2R = Drawing.new("Line"), 
+            T2LL = Drawing.new("Line"), 
+            T2RL = Drawing.new("Line")  
         }
         
         -- Box
@@ -79,7 +78,7 @@ local function getESP(player)
         espCache[player].Box.Thickness = 1.5
         espCache[player].Box.Filled = false
         
-        -- Texts (Clean system font)
+        -- Texts (Clean system font fix)
         local texts = {espCache[player].Name, espCache[player].Distance}
         for _, txt in pairs(texts) do
             txt.Color = Color3.fromRGB(255, 255, 255)
@@ -100,7 +99,7 @@ local function getESP(player)
         espCache[player].HealthBar.Filled = true
         espCache[player].HealthBar.Thickness = 1
         
-        -- Skeleton Lines Style
+        -- Skeleton Style
         local skelLines = {espCache[player].H2T, espCache[player].T2L, espCache[player].T2R, espCache[player].T2LL, espCache[player].T2RL}
         for _, line in pairs(skelLines) do
             line.Color = Color3.fromRGB(255, 255, 255)
@@ -110,21 +109,29 @@ local function getESP(player)
     return espCache[player]
 end
 
--- Cleanup function to prevent severe lag/crashes
 local function cleanPlayerESP(player)
     if espCache[player] then
-        for _, obj in pairs(espCache[player]) do
-            obj:Remove()
-        end
+        for _, obj in pairs(espCache[player]) do obj:Remove() end
         espCache[player] = nil
     end
 end
 Players.PlayerRemoving:Connect(cleanPlayerESP)
 
+-- Safe opponent filtering matrix
+local function isOpponent(player)
+    if player == LocalPlayer then return false end
+    if player.Team British and LocalPlayer.Team then
+        if player.Team == LocalPlayer.Team and player.Team.Name ~= "Neutral" then
+            return false -- Strict teammate rejection
+        end
+    end
+    return true
+end
+
 -- Create the Rayfield Window
 local Window = Rayfield:CreateWindow({
-   Name = "MantizzzHub 🚀",
-   LoadingTitle = "Loading MantizzzHub Mega Edition...",
+   Name = "MantizzzHub",
+   LoadingTitle = "Loading MantizzzHub...",
    LoadingSubtitle = "by Mantiqzz",
    ConfigurationSaving = { Enabled = false },
    Discord = { Enabled = false },
@@ -151,15 +158,8 @@ CombatTab:CreateToggle({
 })
 
 CombatTab:CreateToggle({
-   Name = "Triggerbot (Auto-Shoot when Hovering)",
-   CurrentValue = false,
-   Flag = "TriggerToggle", 
-   Callback = function(Value) triggerbotEnabled = Value end,
-})
-
-CombatTab:CreateToggle({
    Name = "Team Check",
-   CurrentValue = false,
+   CurrentValue = true,
    Flag = "TeamCheckToggle", 
    Callback = function(Value) teamCheckEnabled = Value end,
 })
@@ -191,40 +191,30 @@ CombatTab:CreateSlider({
    Callback = function(Value) smoothnessValue = Value end,
 })
 
--- High-Risk Exploits Section
-CombatTab:CreateSection("⚠️ RAGE / BAN RISK")
+-- Triggerbot Execution Section
+CombatTab:CreateSection("⚠️ TRIGGERBOT RAGE MODE")
 
 CombatTab:CreateToggle({
-   Name = "Confirm Kill-All Risk (Are you sure?)",
+   Name = "Confirm Triggerbot Risk (Are you sure?)",
    CurrentValue = false,
-   Flag = "KillConfirm",
-   Callback = function(Value)
-       killAllConfirmed = Value
-       if Value then
-           Rayfield:Notify({
-               Name = "🚨 CRITICAL WARNING",
-               Content = "Teleport Kill-All is highly visible! Anti-cheats will ban you quickly. Use at your own risk!",
-               Duration = 6,
-               Image = 4483362458,
-           })
-       end
-   end,
+   Flag = "TriggerConfirm",
+   Callback = function(Value) triggerbotConfirmed = Value end,
 })
 
 CombatTab:CreateToggle({
-   Name = "Execute Loop Kill-All",
+   Name = "Triggerbot (Teleport Kill Opponents Loop)",
    CurrentValue = false,
-   Flag = "KillAllLoop", 
+   Flag = "TriggerbotLoop", 
    Callback = function(Value) 
-       if Value and not killAllConfirmed then
+       if Value and not triggerbotConfirmed then
            Rayfield:Notify({
                Name = "Execution Blocked",
-               Content = "You must toggle 'Confirm Kill-All Risk' first!",
-               Duration = 4,
+               Content = "You must toggle 'Confirm Triggerbot Risk' to YES first!",
+               Duration = 5,
            })
-           killAllEnabled = false
+           triggerbotEnabled = false
        else
-           killAllEnabled = Value 
+           triggerbotEnabled = Value 
        end
    end,
 })
@@ -345,10 +335,9 @@ MovementTab:CreateSlider({
 })
 
 ---------------------------------------------------------
--- LOGIC & ENVIRONMENT CONTROLS
+-- ENGINES & ASYNC LOOPS
 ---------------------------------------------------------
 
--- Fly Physics System
 function startFly()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart")
@@ -368,25 +357,26 @@ function stopFly()
     if bodyVelocity then bodyVelocity:Destroy() end
 end
 
--- Noclip Engine connection (Fires safely before physics rendering)
 RunService.Stepped:Connect(function()
     if noclipEnabled and LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
+            if part:IsA("BasePart") then part.CanCollide = false end
         end
     end
 end)
 
--- Infinite Jump Hook
+-- Fixed Force-Velocity Infinite Jump Connection
 UserInputService.JumpRequest:Connect(function()
-    if infJumpEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+    if infJumpEnabled and LocalPlayer.Character then
+        local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hrp and hum then
+            hrp.Velocity = Vector3.new(hrp.Velocity.X, hum.JumpPower > 0 and hum.JumpPower or 50, hrp.Velocity.Z)
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
     end
 end)
 
--- Input Bind tracking
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed then
         if input.UserInputType == Enum.UserInputType.MouseButton2 then rightClickHeld = true end
@@ -408,7 +398,6 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.D then flyCtrl.R = 0 end
 end)
 
--- Target Selection Math (Closest to Crosshair)
 local function getPlayerClosestToCrosshair()
     local nearestCharacter = nil
     local shortestScreenDistance = math.huge
@@ -416,8 +405,7 @@ local function getPlayerClosestToCrosshair()
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            if teamCheckEnabled and player.Team == LocalPlayer.Team then continue end
+        if isOpponent(player) and player.Character then
             local character = player.Character
             local targetPartName = headshotEnabled and "Head" or "HumanoidRootPart"
             local targetPart = character:FindFirstChild(targetPartName)
@@ -445,29 +433,33 @@ local function getPlayerClosestToCrosshair()
     return nearestCharacter
 end
 
--- Threaded loop handling the teleport Kill-All loop mechanics
+-- Re-engineered Triggerbot Loop (Teleport, Auto-Aim, Auto-Shoot Opponents Only)
 task.spawn(function()
     while task.wait() do
-        if killAllEnabled and killAllConfirmed and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if triggerbotEnabled and triggerbotConfirmed and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
-                    if not teamCheckEnabled or (teamCheckEnabled and player.Team ~= LocalPlayer.Team) then
-                        local enemyChar = player.Character
-                        
-                        -- Keep teleporting to the opponent until they drop dead
-                        while killAllEnabled and enemyChar and enemyChar:FindFirstChild("Humanoid") and enemyChar.Humanoid.Health > 0 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") do
-                            -- Teleport slightly behind or on top of them
-                            LocalPlayer.Character.HumanoidRootPart.CFrame = enemyChar.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
+                if isOpponent(player) and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
+                    local enemyChar = player.Character
+                    
+                    while triggerbotEnabled and enemyChar and enemyChar:FindFirstChild("Humanoid") and enemyChar.Humanoid.Health > 0 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") do
+                        local targetPart = enemyChar:FindFirstChild("Head") or enemyChar:FindFirstChild("HumanoidRootPart")
+                        if targetPart then
+                            -- 1. Teleport exactly behind them
+                            LocalPlayer.Character.HumanoidRootPart.CFrame = targetPart.CFrame * CFrame.new(0, 0, 2.5)
                             
-                            -- Universal Tool Execution Loop
+                            -- 2. Force Auto-Aim Camera Frame Locking
+                            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)
+                            
+                            -- 3. Universal Tool Auto-Shoot Activation
                             local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                            if tool then
-                                tool:Activate()
-                            end
-                            if typeof(mouse1click) == "function" then mouse1click() end
+                            if tool then tool:Activate() end
                             
-                            task.wait(0.05)
+                            -- Hardware simulated backup clicking clicker
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                            task.wait(0.02)
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
                         end
+                        task.wait(0.03)
                     end
                 end
             end
@@ -475,14 +467,12 @@ task.spawn(function()
     end
 end)
 
--- Core Rendering Loop
+-- Main Frame Renderer
 RunService.RenderStepped:Connect(function()
-    -- 1. WalkSpeed management
     if speedToggleEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeedValue
     end
     
-    -- 2. Fly Execution handling
     if isFlying and bodyVelocity and bodyGyro then
         local camCF = Camera.CFrame
         bodyGyro.cframe = camCF
@@ -494,52 +484,34 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- 3. FOV Visual update
     FOVCircle.Radius = fovRadiusValue
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Visible = fovCheckEnabled and aimbotEnabled
 
-    -- 4. Triggerbot Execution
-    if triggerbotEnabled and Mouse.Target then
-        local hitModel = Mouse.Target:FindFirstAncestorOfClass("Model")
-        if hitModel and hitModel:FindFirstChild("Humanoid") and Players:GetPlayerFromCharacter(hitModel) then
-            local targetPlayer = Players:GetPlayerFromCharacter(hitModel)
-            if targetPlayer ~= LocalPlayer and (not teamCheckEnabled or targetPlayer.Team ~= LocalPlayer.Team) then
-                if typeof(mouse1click) == "function" then mouse1click() end
-                local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                if tool then tool:Activate() end
-            end
-        end
-    end
-
-    -- 5. Aimbot Camera Interpolation
     if aimbotEnabled and rightClickHeld then
         local target = getPlayerClosestToCrosshair()
         if target then
             local targetPartName = headshotEnabled and "Head" or "HumanoidRootPart"
             local aimPart = target:FindFirstChild(targetPartName)
             if aimPart then
-                local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, aimPart.Position)
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 1 / smoothnessValue)
+                Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, aimPart.Position), 1 / smoothnessValue)
             end
         end
     end
     
-    -- 6. Ultimate Custom ESP System Engine
+    -- Visual Core System Engine
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local char = player.Character
             local esp = getESP(player)
-            
             local isAlive = char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0
-            local isEnemy = not teamCheckEnabled or (teamCheckEnabled and player.Team ~= LocalPlayer.Team)
+            local isEnemy = isOpponent(player)
             
-            if isAlive and isEnemy then
+            if isAlive and (not teamCheckEnabled or isEnemy) then
                 local rootPart = char.HumanoidRootPart
                 local head = char.Head
                 local humanoid = char.Humanoid
                 
-                -- Highlight Engine Outlines
                 local hl = char:FindFirstChild("ESP_Highlight")
                 if espOutlineEnabled then
                     if not hl then
@@ -555,7 +527,6 @@ RunService.RenderStepped:Connect(function()
                     if hl then hl.Enabled = false end
                 end
                 
-                -- Coordinate Translation Math
                 local bottomPos, onScreenBottom = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
                 local topPos, onScreenTop = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1, 0))
                 local centerPos, onScreenCenter = Camera:WorldToViewportPoint(rootPart.Position)
@@ -564,7 +535,6 @@ RunService.RenderStepped:Connect(function()
                     local boxHeight = math.abs(bottomPos.Y - topPos.Y)
                     local boxWidth = boxHeight * 0.6
                     
-                    -- Dynamic 2D Square Box
                     if espBoxEnabled then
                         esp.Box.Size = Vector2.new(boxWidth, boxHeight)
                         esp.Box.Position = Vector2.new(topPos.X - boxWidth/2, topPos.Y)
@@ -573,7 +543,6 @@ RunService.RenderStepped:Connect(function()
                         esp.Box.Visible = false
                     end
                     
-                    -- Name Processing
                     if espNameEnabled then
                         esp.Name.Text = player.Name
                         esp.Name.Position = Vector2.new(topPos.X, topPos.Y - 18)
@@ -582,7 +551,6 @@ RunService.RenderStepped:Connect(function()
                         esp.Name.Visible = false
                     end
                     
-                    -- Distance Processing
                     if espDistanceEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                         local distance = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude)
                         esp.Distance.Text = tostring(distance) .. " studs"
@@ -592,7 +560,6 @@ RunService.RenderStepped:Connect(function()
                         esp.Distance.Visible = false
                     end
                     
-                    -- Screen Snaplines (Tracers)
                     if espTracersEnabled and onScreenCenter then
                         esp.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
                         esp.Tracer.To = Vector2.new(centerPos.X, centerPos.Y)
@@ -601,17 +568,16 @@ RunService.RenderStepped:Connect(function()
                         esp.Tracer.Visible = false
                     end
                     
-                    -- Explicit Health Bar Color Step thresholds
                     if espHealthEnabled then
                         local hpFactor = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
                         local barWidth = 3
                         local barXOffset = topPos.X - (boxWidth / 2) - barWidth - 4
                         
-                        local barColor = Color3.fromRGB(0, 255, 0) -- Green default
+                        local barColor = Color3.fromRGB(0, 255, 0)
                         if hpFactor <= 0.20 then
-                            barColor = Color3.fromRGB(255, 0, 0) -- Red (Almost dead)
+                            barColor = Color3.fromRGB(255, 0, 0)
                         elseif hpFactor <= 0.55 then
-                            barColor = Color3.fromRGB(255, 140, 0) -- Orange (Half health)
+                            barColor = Color3.fromRGB(255, 140, 0)
                         end
                         
                         esp.HealthBarBG.Size = Vector2.new(barWidth, boxHeight)
@@ -628,9 +594,7 @@ RunService.RenderStepped:Connect(function()
                         esp.HealthBar.Visible = false
                     end
                     
-                    -- Skeleton Connection Matrix
                     if espSkeletonEnabled then
-                        -- Check for core joints across R6 / R15 layouts
                         local tPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
                         local lArm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftUpperArm")
                         local rArm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightUpperArm")
@@ -659,13 +623,11 @@ RunService.RenderStepped:Connect(function()
                         for _, l in pairs(skelLines) do l.Visible = false end
                     end
                 else
-                    -- Hide everything if behind screen
-                    for _, obj in pairs(esp) do if typeof(obj) == "table" or (typeof(obj) == "userdata" and obj.ClassName == "Square" or obj.ClassName == "Text" or obj.ClassName == "Line") then obj.Visible = false end end
+                    for _, obj in pairs(esp) do if typeof(obj) == "userdata" then obj.Visible = false end end
                 end
             else
-                -- Teammate / Death hidden reset
                 if char then local ohl = char:FindFirstChild("ESP_Highlight") if ohl then ohl.Enabled = false end end
-                for _, obj in pairs(esp) do if typeof(obj) == "table" or (typeof(obj) == "userdata" and obj.ClassName == "Square" or obj.ClassName == "Text" or obj.ClassName == "Line") then obj.Visible = false end end
+                for _, obj in pairs(esp) do if typeof(obj) == "userdata" then obj.Visible = false end end
             end
         end
     end
